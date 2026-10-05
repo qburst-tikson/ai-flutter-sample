@@ -29,7 +29,8 @@ class HomeView extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           child: BlocBuilder<HomeCubit, HomeState>(
             builder: (context, state) => switch (state) {
-              HomeInitial() || HomeLoading() =>
+              HomeInitial() ||
+              HomeLoading() =>
                 const CircularProgressIndicator(),
               HomeLoaded(:final greeting) => Column(
                   mainAxisSize: MainAxisSize.min,
