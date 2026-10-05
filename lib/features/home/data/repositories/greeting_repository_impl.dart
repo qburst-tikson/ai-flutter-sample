@@ -15,7 +15,8 @@ class GreetingRepositoryImpl implements GreetingRepository {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       return const Greeting(
         title: 'AI Flutter Sample',
-        message: 'Built from Jira tickets by Claude. Ready for your first feature.',
+        message:
+            'Built from Jira tickets by Claude. Ready for your first feature.',
       );
     } on Failure {
       rethrow;
