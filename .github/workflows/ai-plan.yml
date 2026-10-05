@@ -53,9 +53,9 @@ jobs:
       - name: Claude writes the plan
         uses: anthropics/claude-code-action@v1
         with:
-          # Use ONE of these two:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Whichever secret you set is used: API key OR Claude Pro/Max token.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
             --max-turns 40
             --allowedTools "Read,Glob,Grep,Write,Bash(flutter analyze:*),Bash(ls:*)"
