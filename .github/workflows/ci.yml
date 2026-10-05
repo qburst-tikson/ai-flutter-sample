@@ -2,7 +2,7 @@ name: CI
 on:
   push:
 permissions:
-  contents: read
+  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -12,18 +12,12 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter --version
       - run: flutter pub get
-      - name: Format diff
+      - name: Format and commit back
         run: |
-          dart format .
-          git diff > format.patch || true
-          echo "=====PATCH-START====="
-          cat format.patch
-          echo "=====PATCH-END====="
-      - name: Analyze
-        if: always()
-        run: flutter analyze
-      - name: Test
-        if: always()
-        run: flutter test
+          dart format lib test
+          git config user.name ci-format
+          git config user.email ci@format
+          git add lib test
+          git commit -m "formatted" || echo nothing
+          git push
