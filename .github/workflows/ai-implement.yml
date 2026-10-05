@@ -1,0 +1,175 @@
+# Phase 2 — plan approved in Jira -> Claude implements it -> commits -> pushes -> opens PR.
+# Triggered by Jira Automation (repository_dispatch "jira-implement") or manually.
+name: AI Implement (Jira)
+
+on:
+  repository_dispatch:
+    types: [jira-implement]
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Jira issue key (e.g. FIT-123)"
+        required: true
+
+concurrency:
+  group: ai-${{ github.event.client_payload.issue_key || inputs.issue_key }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ISSUE_KEY: ${{ github.event.client_payload.issue_key || inputs.issue_key }}
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      # A PAT (or GitHub App token) makes the PR trigger your normal CI.
+      # With the default GITHUB_TOKEN, PRs it opens do NOT trigger other workflows.
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+      BASE_BRANCH: ${{ vars.AI_BASE_BRANCH || 'main' }}
+    steps:
+      - name: Validate issue key
+        run: |
+          [[ "$ISSUE_KEY" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]] || { echo "Bad issue key: $ISSUE_KEY"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.AI_BASE_BRANCH || 'main' }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Load ticket + approved plan
+        run: |
+          chmod +x scripts/jira.sh
+          mkdir -p .ai
+          scripts/jira.sh fetch "$ISSUE_KEY" > .ai/ticket.md
+          scripts/jira.sh latest-plan "$ISSUE_KEY" > .ai/plan.md
+          test -s .ai/plan.md || { echo "No [AI-PLAN] comment found on $ISSUE_KEY — run the plan phase first."; exit 1; }
+
+      - name: Create feature branch
+        run: |
+          summary="$(scripts/jira.sh summary "$ISSUE_KEY")"
+          slug="$(echo "$summary" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40 | sed -E 's/-+$//')"
+          branch="feature/${ISSUE_KEY}-${slug:-work}"
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
+          git config user.name  "claude-ai-bot"
+          git config user.email "claude-ai-bot@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch exists — continuing from it."
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+          else
+            git checkout -b "$branch"
+          fi
+          # Keep the scratch files out of commits
+          grep -qxF '.ai/' .git/info/exclude || echo '.ai/' >> .git/info/exclude
+
+      - name: Claude implements the plan
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Whichever secret you set is used: API key OR Claude Pro/Max token.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 150
+            --allowedTools "Read,Glob,Grep,Edit,Write,MultiEdit,Bash(flutter:*),Bash(dart:*),Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rm:*),Bash(git mv:*),Bash(ls:*),Bash(mkdir:*)"
+          prompt: |
+            You are the implementation agent for this Flutter project. Follow CLAUDE.md strictly.
+
+            The Jira ticket is in .ai/ticket.md. The APPROVED plan is in .ai/plan.md.
+            Implement exactly that plan — no scope creep. If something in the plan turns out
+            to be impossible or wrong, make the smallest sensible deviation and record it.
+
+            Rules:
+            1. Work through the plan's Steps in order. After each step, stage only the
+               relevant files and make ONE commit using the commit format in CLAUDE.md,
+               including the Jira key. Never commit anything under .ai/.
+            2. Write the tests listed in the plan.
+            3. Before finishing, run `dart format .`, `flutter analyze` and `flutter test`.
+               Fix every error and failing test, then commit the fixes
+               (e.g. "fix(<scope>): resolve analyzer warnings [<KEY>]").
+            4. Do NOT run git push, git checkout, git reset or git rebase. The workflow pushes.
+            5. When done, write .ai/pr.md — the pull request description:
+               - Summary of what changed and why (link the Jira key)
+               - Commit-by-commit list
+               - How to test (manual steps)
+               - Deviations from the approved plan (or "None")
+               - Anything the reviewer must look at carefully
+
+      - name: Verify (format, analyze, test)
+        id: verify
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          dart format --output=none --set-exit-if-changed . 2>&1 | tee .ai/verify.log
+          flutter analyze 2>&1 | tee -a .ai/verify.log
+          flutter test 2>&1 | tee -a .ai/verify.log
+
+      - name: Push branch and open PR
+        id: pr
+        run: |
+          if [[ -z "$(git log "origin/$BASE_BRANCH..HEAD" --oneline)" ]]; then
+            echo "Claude made no commits."; exit 1
+          fi
+          git push -u origin "$BRANCH"
+
+          summary="$(scripts/jira.sh summary "$ISSUE_KEY")"
+          title="[$ISSUE_KEY] $summary"
+          [[ -s .ai/pr.md ]] || echo "Implements $ISSUE_KEY per the approved plan." > .ai/pr.md
+          {
+            echo
+            echo "---"
+            echo "Jira: ${JIRA_BASE_URL%/}/browse/$ISSUE_KEY"
+            if [[ "${{ steps.verify.outcome }}" != "success" ]]; then
+              echo
+              echo "⚠️ **Automated checks failed** — opened as draft. See the workflow run:"
+              echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            fi
+          } >> .ai/pr.md
+
+          draft=""
+          [[ "${{ steps.verify.outcome }}" == "success" ]] || draft="--draft"
+
+          existing="$(gh pr list --head "$BRANCH" --state open --json url -q '.[0].url')"
+          if [[ -n "$existing" ]]; then
+            url="$existing"
+            gh pr edit "$url" --body-file .ai/pr.md
+          else
+            url="$(gh pr create --base "$BASE_BRANCH" --head "$BRANCH" --title "$title" --body-file .ai/pr.md $draft)"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Update Jira
+        run: |
+          {
+            echo "[AI-IMPL] Implementation pushed."
+            echo "Branch: $BRANCH"
+            echo "Pull request: ${{ steps.pr.outputs.url }}"
+            if [[ "${{ steps.verify.outcome }}" == "success" ]]; then
+              echo "Checks: format / analyze / tests passed ✅"
+            else
+              echo "Checks: FAILED ❌ — PR opened as draft, needs a human look."
+            fi
+          } > .ai/jira-done.md
+          scripts/jira.sh comment "$ISSUE_KEY" .ai/jira-done.md
+          scripts/jira.sh transition "$ISSUE_KEY" "${{ vars.JIRA_REVIEW_STATUS || 'In review' }}"
+
+      - name: Report failure to Jira
+        if: failure()
+        run: |
+          echo "AI implementation failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > .ai/fail.md
+          scripts/jira.sh comment "$ISSUE_KEY" .ai/fail.md || true
