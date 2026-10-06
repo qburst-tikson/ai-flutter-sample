@@ -1,0 +1,30 @@
+name: PAT test
+on:
+  push:
+    branches: [pat-test]
+permissions:
+  contents: read
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Secret presence
+        env:
+          P: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$P" ]; then echo "::error title=GH_PAT::secret is EMPTY or missing"; exit 0; fi
+          echo "::notice title=GH_PAT::length ${#P}, starts with ${P:0:11}, newline=$(printf '%s' "$P" | grep -c $'\n' || true)"
+          code=$(curl -s -o /tmp/r.json -w '%{http_code}' -H "Authorization: Bearer $P" https://api.github.com/repos/${{ github.repository }})
+          echo "::notice title=repo read::HTTP $code push=$(jq -r '.permissions.push // "n/a"' /tmp/r.json)"
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+      - name: Try push
+        run: |
+          git checkout -b pat-probe-${{ github.run_id }}
+          if out=$(git push origin HEAD 2>&1); then
+            echo "::notice title=push::OK"
+            git push origin --delete pat-probe-${{ github.run_id }} >/dev/null 2>&1 || true
+          else
+            echo "::error title=push failed::$(echo "$out" | tr '\n' ' ' | head -c 600)"
+          fi
