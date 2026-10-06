@@ -136,10 +136,13 @@ jobs:
       - name: Push branch and open PR
         id: pr
         run: |
-          if [[ -z "$(git log "origin/$BASE_BRANCH..HEAD" --oneline)" ]]; then
-            echo "Claude made no commits."; exit 1
-          fi
-          git push -u origin "$BRANCH"
+          fail() { echo "::error title=$1::$(printf '%s' "$2" | tr '\n' ' ' | head -c 900)"; exit 1; }
+          echo "::notice title=git state::branch=$(git rev-parse --abbrev-ref HEAD 2>&1) head=$(git rev-parse --short HEAD 2>&1)"
+          git fetch -q origin "$BASE_BRANCH" 2>/dev/null || true
+          commits="$(git log "origin/$BASE_BRANCH..HEAD" --oneline 2>&1)" || fail "git log" "$commits"
+          [[ -n "$commits" ]] || fail "no commits" "Claude made no commits. Status: $(git status --short | head -20)"
+          echo "::notice title=commits::$(echo "$commits" | tr '\n' ' | ' | head -c 900)"
+          out="$(git push -u origin "HEAD:refs/heads/$BRANCH" 2>&1)" || fail "git push" "$out"
 
           summary="$(scripts/jira.sh summary "$ISSUE_KEY")"
           title="[$ISSUE_KEY] $summary"
