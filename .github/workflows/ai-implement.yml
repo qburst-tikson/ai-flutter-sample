@@ -142,6 +142,10 @@ jobs:
           commits="$(git log "origin/$BASE_BRANCH..HEAD" --oneline 2>&1)" || fail "git log" "$commits"
           [[ -n "$commits" ]] || fail "no commits" "Claude made no commits. Status: $(git status --short | head -20)"
           echo "::notice title=commits::$(echo "$commits" | tr '\n' ' | ' | head -c 900)"
+          # claude-code-action swaps in its own short-lived git credentials; reset to GH_PAT.
+          git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
+          git config --local --unset-all credential.helper 2>/dev/null || true
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           out="$(git push -u origin "HEAD:refs/heads/$BRANCH" 2>&1)" || fail "git push" "$out"
 
           summary="$(scripts/jira.sh summary "$ISSUE_KEY")"
