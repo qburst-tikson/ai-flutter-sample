@@ -79,6 +79,7 @@ jobs:
           grep -qxF '.ai/' .git/info/exclude || echo '.ai/' >> .git/info/exclude
 
       - name: Claude implements the plan
+        id: claude
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -110,6 +111,19 @@ jobs:
                - Deviations from the approved plan (or "None")
                - Anything the reviewer must look at carefully
 
+
+      - name: Show Claude error
+        if: failure() && steps.claude.outputs.execution_file != ''
+        run: |
+          f="${{ steps.claude.outputs.execution_file }}"
+          [[ -f "$f" ]] || exit 0
+          msg="$(jq -r '[.[] | select(.type=="result")] | last | ((.subtype // "") + ": " + ((.result // "") | tostring))' "$f" 2>/dev/null | head -c 1500)"
+          last="$(jq -r '[.[] | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text] | last // ""' "$f" 2>/dev/null | head -c 800)"
+          mkdir -p .ai
+          printf 'Claude error: %s\n%s\n' "$msg" "$last" > .ai/claude_error.txt
+          echo "::error title=Claude result::$(echo "$msg" | tr '\n' ' ')"
+          [[ -n "$last" ]] && echo "::error title=Claude last message::$(echo "$last" | tr '\n' ' ')"
+          true
       - name: Verify (format, analyze, test)
         id: verify
         continue-on-error: true
@@ -172,4 +186,5 @@ jobs:
         if: failure()
         run: |
           echo "AI implementation failed. Logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > .ai/fail.md
+          [[ -f .ai/claude_error.txt ]] && cat .ai/claude_error.txt >> .ai/fail.md
           scripts/jira.sh comment "$ISSUE_KEY" .ai/fail.md || true
