@@ -14,9 +14,8 @@ class GreetingRepositoryImpl implements GreetingRepository {
       // Simulate a short network delay.
       await Future<void>.delayed(const Duration(milliseconds: 300));
       return const Greeting(
-        title: 'AI Flutter Sample',
-        message:
-            'Welcome! This app is built from Jira tickets.',
+        title: 'AI Flutter Demo',
+        message: 'Welcome! This app is built from Jira tickets.',
       );
     } on Failure {
       rethrow;
