@@ -155,6 +155,8 @@ jobs:
             echo
             echo "---"
             echo "Jira: ${JIRA_BASE_URL%/}/browse/$ISSUE_KEY"
+            echo
+            echo "_Review tip: submit **Request changes**, or comment with \`@claude\` + what to change, and the AI will push fixes to this PR._"
             if [[ "${{ steps.verify.outcome }}" != "success" ]]; then
               echo
               echo "⚠️ **Automated checks failed** — opened as draft. See the workflow run:"
