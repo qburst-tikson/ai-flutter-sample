@@ -16,7 +16,7 @@ class GreetingRepositoryImpl implements GreetingRepository {
       return const Greeting(
         title: 'AI Flutter Sample',
         message:
-            'Built from Jira tickets by Claude. Ready for your first feature.',
+            'Welcome! This app is built from Jira tickets.',
       );
     } on Failure {
       rethrow;
