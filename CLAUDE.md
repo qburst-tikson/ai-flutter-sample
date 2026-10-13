@@ -64,6 +64,6 @@ Conventional Commits, Jira key at the end:
 
 ## Never
 - Push, rebase, reset, force anything, or touch other branches.
-- Modify `.github/workflows/`, `scripts/jira.sh`, signing configs, `android/key.properties`,
+- Modify `.github/workflows/`, `.github/ai-prompts/`, `scripts/jira.sh`, signing configs, `android/key.properties`,
   `ios/Runner.xcodeproj` signing settings, or anything under `.ai/` in commits.
 - Delete or skip existing tests to make the suite pass.

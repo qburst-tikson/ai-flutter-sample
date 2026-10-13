@@ -80,6 +80,7 @@ jobs:
 
       - name: Claude implements the plan
         id: claude
+        if: vars.AI_ENGINE != 'factory'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -89,28 +90,35 @@ jobs:
             --max-turns 150
             --allowedTools "Read,Glob,Grep,Edit,Write,MultiEdit,Bash(flutter:*),Bash(dart:*),Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rm:*),Bash(git mv:*),Bash(ls:*),Bash(mkdir:*)"
           prompt: |
-            You are the implementation agent for this Flutter project. Follow CLAUDE.md strictly.
+            Read the file .github/ai-prompts/implement.md and follow its instructions exactly.
 
-            The Jira ticket is in .ai/ticket.md. The APPROVED plan is in .ai/plan.md.
-            Implement exactly that plan — no scope creep. If something in the plan turns out
-            to be impossible or wrong, make the smallest sensible deviation and record it.
-
-            Rules:
-            1. Work through the plan's Steps in order. After each step, stage only the
-               relevant files and make ONE commit using the commit format in CLAUDE.md,
-               including the Jira key. Never commit anything under .ai/.
-            2. Write the tests listed in the plan.
-            3. Before finishing, run `dart format .`, `flutter analyze` and `flutter test`.
-               Fix every error and failing test, then commit the fixes
-               (e.g. "fix(<scope>): resolve analyzer warnings [<KEY>]").
-            4. Do NOT run git push, git checkout, git reset or git rebase. The workflow pushes.
-            5. When done, write .ai/pr.md — the pull request description:
-               - Summary of what changed and why (link the Jira key)
-               - Commit-by-commit list
-               - How to test (manual steps)
-               - Deviations from the approved plan (or "None")
-               - Anything the reviewer must look at carefully
-
+      - name: Factory Droid implements the plan
+        id: droid
+        if: vars.AI_ENGINE == 'factory'
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          FACTORY_MODEL: ${{ vars.FACTORY_MODEL }}
+        run: |
+          [[ -n "$FACTORY_API_KEY" ]] || { echo "::error title=Factory::FACTORY_API_KEY secret is missing"; exit 1; }
+          mkdir -p .ai
+          curl -fsSL https://app.factory.ai/cli | sh
+          export PATH="$HOME/.local/bin:$HOME/.factory/bin:$HOME/bin:$PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"; echo "$HOME/.factory/bin" >> "$GITHUB_PATH"
+          command -v droid >/dev/null || { echo "::error title=Factory::droid CLI not found after install"; exit 1; }
+          droid --version || true
+          model_args=()
+          [[ -n "$FACTORY_MODEL" ]] && model_args=(-m "$FACTORY_MODEL")
+          set +e
+          droid exec --auto medium "${model_args[@]}" -o json -f .github/ai-prompts/implement.md > .ai/droid.json 2> .ai/droid.err
+          rc=$?
+          set -e
+          echo "::notice title=Droid run::exit=$rc $(jq -r '"turns=\(.num_turns // "?") duration_ms=\(.duration_ms // "?")"' .ai/droid.json 2>/dev/null)"
+          if [[ $rc -ne 0 || "$(jq -r '.is_error // false' .ai/droid.json 2>/dev/null)" == "true" ]]; then
+            msg="$( { jq -r '.result // empty' .ai/droid.json 2>/dev/null; tail -c 800 .ai/droid.err; } | tr '\n' ' ' | head -c 1200)"
+            echo "::error title=Droid result::$msg"
+            printf 'Factory Droid error: %s\n' "$msg" > .ai/claude_error.txt
+            exit 1
+          fi
 
       - name: Show Claude error
         if: failure() && steps.claude.outputs.execution_file != ''

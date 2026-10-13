@@ -52,6 +52,7 @@ jobs:
 
       - name: Claude writes the plan
         id: claude
+        if: vars.AI_ENGINE != 'factory'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -63,37 +64,35 @@ jobs:
           # Safe by design: this job has read-only repo permissions and never pushes,
           # so even a stray edit is thrown away when the runner ends.
           prompt: |
-            You are the planning agent for this Flutter project. Follow CLAUDE.md.
+            Read the file .github/ai-prompts/plan.md and follow its instructions exactly.
 
-            Read the Jira ticket in .ai/ticket.md (it includes all comments — if the
-            reviewer left feedback on an earlier [AI-PLAN], address it in this new plan).
-            Explore the codebase to understand the current architecture.
-
-            DO NOT modify any project code. Your only output is the file .ai/plan.md.
-
-            Write .ai/plan.md in this exact structure (Jira wiki markup is fine, plain markdown is fine too):
-
-            [AI-PLAN] <ISSUE KEY> — <short title>
-            h3. Understanding
-            What the ticket asks for, in 2–4 sentences. List any assumptions.
-            h3. Open questions
-            Anything ambiguous. If something blocks implementation, say so clearly.
-            h3. Approach
-            Architecture decisions (state management, layers, packages to add and why).
-            h3. Files
-            Every file to create / modify / delete, with a one-line purpose each.
-            h3. Steps
-            Numbered, small, ordered steps. Each step = one commit, with its planned
-            Conventional Commit message, e.g. "feat(auth): add login bloc".
-            h3. Testing
-            Unit / bloc / widget tests to add and how to verify manually.
-            h3. Risks
-            Breaking changes, migrations, performance, anything the reviewer should know.
-
-            ----
-            ✅ To approve: drag this ticket to *In development*.
-            ✏️ To request changes: add a comment with feedback, move the ticket back to *Open*, then to *Ready to work* again.
-
+      - name: Factory Droid writes the plan
+        id: droid
+        if: vars.AI_ENGINE == 'factory'
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          FACTORY_MODEL: ${{ vars.FACTORY_MODEL }}
+        run: |
+          [[ -n "$FACTORY_API_KEY" ]] || { echo "::error title=Factory::FACTORY_API_KEY secret is missing"; exit 1; }
+          mkdir -p .ai
+          curl -fsSL https://app.factory.ai/cli | sh
+          export PATH="$HOME/.local/bin:$HOME/.factory/bin:$HOME/bin:$PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"; echo "$HOME/.factory/bin" >> "$GITHUB_PATH"
+          command -v droid >/dev/null || { echo "::error title=Factory::droid CLI not found after install"; exit 1; }
+          droid --version || true
+          model_args=()
+          [[ -n "$FACTORY_MODEL" ]] && model_args=(-m "$FACTORY_MODEL")
+          set +e
+          droid exec --auto low "${model_args[@]}" -o json -f .github/ai-prompts/plan.md > .ai/droid.json 2> .ai/droid.err
+          rc=$?
+          set -e
+          echo "::notice title=Droid run::exit=$rc $(jq -r '"turns=\(.num_turns // "?") duration_ms=\(.duration_ms // "?")"' .ai/droid.json 2>/dev/null)"
+          if [[ $rc -ne 0 || "$(jq -r '.is_error // false' .ai/droid.json 2>/dev/null)" == "true" ]]; then
+            msg="$( { jq -r '.result // empty' .ai/droid.json 2>/dev/null; tail -c 800 .ai/droid.err; } | tr '\n' ' ' | head -c 1200)"
+            echo "::error title=Droid result::$msg"
+            printf 'Factory Droid error: %s\n' "$msg" > .ai/claude_error.txt
+            exit 1
+          fi
 
       - name: Show Claude error
         if: failure() && steps.claude.outputs.execution_file != ''

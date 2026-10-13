@@ -146,3 +146,28 @@ Claude is only as good as the ticket. Include:
 | Transition warnings in log | Status names in Jira differ; rename in YAML or Jira |
 | PR doesn't trigger CI | Add `GH_PAT` secret |
 | Claude stops mid-way | Raise `--max-turns`, or split the ticket into smaller ones |
+
+---
+
+## Switching the AI engine: Claude or Factory Droid
+
+All three AI workflows (plan, implement, review-fix) can run on either engine. The Jira flow,
+branches, commits, PRs, checks and comments are identical; only the AI step changes.
+
+| Setting (GitHub → Settings → Secrets and variables → Actions) | Value |
+|---|---|
+| Variable `AI_ENGINE` | `claude` (default if unset) or `factory` |
+| Secret `FACTORY_API_KEY` | Factory API key (`fk-...`), only needed for `factory` |
+| Variable `FACTORY_MODEL` | Optional model id for Droid; empty = Factory default |
+
+How Factory runs: each workflow installs the Droid CLI and runs `droid exec` headless with the same
+prompt file from `.github/ai-prompts/`:
+
+| Workflow | Prompt | Droid autonomy |
+|---|---|---|
+| ai-plan.yml | `plan.md` | `--auto low` (edit files only) |
+| ai-implement.yml | `implement.md` | `--auto medium` (edit, build, test, commit — no push) |
+| ai-review-fix.yml | `review-fix.md` | `--auto medium` |
+
+Droids read `AGENTS.md`, which points them to `CLAUDE.md`, so both engines follow the same rules.
+Pushing is still done only by the workflow, never by the AI.
