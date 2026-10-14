@@ -17,11 +17,25 @@ set -euo pipefail
 BASE="${JIRA_BASE_URL%/}/rest/api/2"
 
 api() {
-  curl -sS --fail-with-body \
+  # Prints the body on success. On an HTTP error, prints the status and Jira's
+  # message to stderr (and as a GitHub annotation) and exits non-zero.
+  local tmp code
+  tmp="$(mktemp)"
+  code="$(curl -sS -o "$tmp" -w '%{http_code}' \
     -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
     -H "Accept: application/json" \
     -H "Content-Type: application/json" \
-    "$@"
+    "$@")" || { echo "::error title=Jira request failed::curl could not reach Jira (${JIRA_BASE_URL})" >&2; rm -f "$tmp"; exit 1; }
+  if [[ "$code" -lt 200 || "$code" -ge 300 ]]; then
+    local msg
+    msg="$(jq -r '[(.errorMessages // [])[], ((.errors // {}) | to_entries[] | "\(.key): \(.value)")] | join("; ")' "$tmp" 2>/dev/null)"
+    [[ -n "$msg" ]] || msg="$(head -c 300 "$tmp")"
+    echo "::error title=Jira HTTP $code::$msg" >&2
+    rm -f "$tmp"
+    exit 1
+  fi
+  cat "$tmp"
+  rm -f "$tmp"
 }
 
 cmd="${1:?command required}"
@@ -29,12 +43,14 @@ key="${2:?issue key required}"
 
 case "$cmd" in
   fetch)
-    api "$BASE/issue/$key?fields=summary,description,issuetype,priority,labels,comment" | jq -r '
+    json="$(api "$BASE/issue/$key?fields=summary,description,issuetype,priority,labels,comment")"
+    jq -r '
+      def txt: if . == null then "" elif type == "string" then . else tojson end;
       "# \(.key): \(.fields.summary)\n" +
-      "Type: \(.fields.issuetype.name) | Priority: \(.fields.priority.name // "n/a") | Labels: \((.fields.labels // []) | join(", "))\n\n" +
-      "## Description\n\(.fields.description // "(no description)")\n\n" +
+      "Type: \(.fields.issuetype.name // "n/a") | Priority: \(.fields.priority.name // "n/a") | Labels: \((.fields.labels // []) | join(", "))\n\n" +
+      "## Description\n\((.fields.description | txt) as $d | if $d == "" then "(no description)" else $d end)\n\n" +
       "## Comments (oldest first)\n" +
-      ([.fields.comment.comments[] | "### \(.author.displayName) — \(.created)\n\(.body)\n"] | join("\n"))'
+      ([(.fields.comment.comments // [])[] | "### \(.author.displayName // "unknown") — \(.created)\n\(.body | txt)\n"] | join("\n"))' <<<"$json"
     ;;
 
   summary)
@@ -43,7 +59,7 @@ case "$cmd" in
 
   latest-plan)
     api "$BASE/issue/$key/comment?orderBy=created&maxResults=100" | jq -r '
-      [.comments[] | select(.body | startswith("[AI-PLAN]"))] | last | .body // empty'
+      [(.comments // [])[] | select((.body | type) == "string" and (.body | startswith("[AI-PLAN]")))] | last | .body // empty'
     ;;
 
   comment)
