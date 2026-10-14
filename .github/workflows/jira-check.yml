@@ -1,0 +1,35 @@
+# Manual diagnostic: checks the Jira secrets and whether a ticket is visible to the token's account.
+name: Jira connection check
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Jira issue key to check (e.g. SCRUM-6)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      KEY: ${{ inputs.issue_key }}
+    steps:
+      - name: Check
+        run: |
+          base="${JIRA_BASE_URL%/}"
+          host="$(sed -E 's#^https?://([^/]+).*#\1#' <<<"$base")"
+          echo "::notice title=Base URL::host=$host (path after host: '$(sed -E 's#^https?://[^/]+##' <<<"$base")')"
+          echo "::notice title=Email::length=${#JIRA_EMAIL} domain=${JIRA_EMAIL#*@}"
+          echo "::notice title=Token::length=${#JIRA_API_TOKEN} has_newline=$([[ "$JIRA_API_TOKEN" == *$'\n'* ]] && echo yes || echo no)"
+          req() { curl -s -o /tmp/r.json -w '%{http_code}' -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -H 'Accept: application/json' "$base$1"; }
+          c=$(req /rest/api/2/myself); echo "::notice title=GET myself::HTTP $c user=$(jq -r '.displayName // .errorMessages[0]? // "?"' /tmp/r.json 2>/dev/null)"
+          c=$(req "/rest/api/2/project/${KEY%%-*}"); echo "::notice title=GET project ${KEY%%-*}::HTTP $c name=$(jq -r '.name // .errorMessages[0]? // "?"' /tmp/r.json 2>/dev/null)"
+          c=$(req "/rest/api/2/issue/${KEY%%-*}-1?fields=summary"); echo "::notice title=GET ${KEY%%-*}-1::HTTP $c $(jq -r '.fields.summary // .errorMessages[0]? // "?"' /tmp/r.json 2>/dev/null)"
+          c=$(req "/rest/api/2/issue/$KEY?fields=summary,security"); echo "::notice title=GET $KEY::HTTP $c $(jq -r '(.fields.summary // .errorMessages[0]? // "?") + (if .fields.security then " security=" + .fields.security.name else "" end)' /tmp/r.json 2>/dev/null)"
+          c=$(req "/rest/api/2/search?jql=project=${KEY%%-*}%20ORDER%20BY%20key%20DESC&maxResults=5&fields=summary"); echo "::notice title=Latest issues visible::HTTP $c $(jq -r '[.issues[]?.key] | join(", ")' /tmp/r.json 2>/dev/null)"
