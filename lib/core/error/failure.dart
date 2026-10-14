@@ -28,6 +28,12 @@ final class CacheFailure extends Failure {
   const CacheFailure([super.message = 'Could not read local data.']);
 }
 
+/// The provided credentials were rejected (e.g. unknown account or wrong
+/// password).
+final class AuthenticationFailure extends Failure {
+  const AuthenticationFailure([super.message = 'Invalid email or password']);
+}
+
 /// Anything we did not anticipate.
 final class UnexpectedFailure extends Failure {
   const UnexpectedFailure([super.message = 'Something went wrong.']);
