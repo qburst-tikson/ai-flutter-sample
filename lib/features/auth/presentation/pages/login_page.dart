@@ -53,6 +53,8 @@ class _LoginViewState extends State<LoginView> {
               MaterialPageRoute<void>(builder: (_) => const HomePage()),
             );
           case LoginError(:final message):
+            _emailController.clear();
+            _passwordController.clear();
             ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()
               ..showSnackBar(SnackBar(content: Text(message)));

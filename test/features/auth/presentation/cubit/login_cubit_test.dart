@@ -75,6 +75,20 @@ void main() {
   );
 
   blocTest<LoginCubit, LoginState>(
+    'emits [Loading, Error] with "Invalid email or password" on bad '
+    'credentials',
+    setUp: () {
+      when(() => login(any())).thenThrow(const AuthenticationFailure());
+    },
+    build: () => LoginCubit(login),
+    act: (cubit) => cubit.login(email, password),
+    expect: () => const [
+      LoginLoading(),
+      LoginError('Invalid email or password'),
+    ],
+  );
+
+  blocTest<LoginCubit, LoginState>(
     'emits [Loading, Error] with the failure message on Failure',
     setUp: () {
       when(() => login(any())).thenThrow(const NetworkFailure());

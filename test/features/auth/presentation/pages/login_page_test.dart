@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:ai_flutter_sample/core/di/injection.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
@@ -35,6 +37,20 @@ void main() {
       ),
     );
   }
+
+  Future<StreamController<LoginState>> pumpWithStream(
+    WidgetTester tester,
+  ) async {
+    final states = StreamController<LoginState>();
+    whenListen(cubit, states.stream, initialState: const LoginInitial());
+    await pumpView(tester);
+    return states;
+  }
+
+  TextField fieldOf(WidgetTester tester, String label) =>
+      tester.widget<TextField>(
+        find.widgetWithText(TextField, label),
+      );
 
   testWidgets('shows the fields and the login button initially', (
     tester,
@@ -90,6 +106,58 @@ void main() {
 
     expect(find.text('No internet connection.'), findsOneWidget);
     expect(find.byType(SnackBar), findsOneWidget);
+  });
+
+  testWidgets('clears both fields and stays on Login on an error state', (
+    tester,
+  ) async {
+    final states = await pumpWithStream(tester);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email'),
+      'user@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Password'),
+      'abc123',
+    );
+
+    states.add(const LoginError('Invalid email or password'));
+    await tester.pump();
+
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text('Invalid email or password'), findsOneWidget);
+    expect(fieldOf(tester, 'Email').controller!.text, isEmpty);
+    expect(fieldOf(tester, 'Password').controller!.text, isEmpty);
+    expect(find.byType(HomeView), findsNothing);
+    expect(find.byType(LoginView), findsOneWidget);
+
+    await states.close();
+  });
+
+  testWidgets('keeps the field text on a validation error', (tester) async {
+    final states = await pumpWithStream(tester);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Email'),
+      'user@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Password'),
+      'abcdef',
+    );
+
+    states.add(
+      const LoginInvalid(
+        passwordError: 'Password must contain both letters and numbers',
+      ),
+    );
+    await tester.pump();
+
+    expect(fieldOf(tester, 'Email').controller!.text, 'user@example.com');
+    expect(fieldOf(tester, 'Password').controller!.text, 'abcdef');
+
+    await states.close();
   });
 
   testWidgets('tapping Login calls cubit.login with the entered values', (
