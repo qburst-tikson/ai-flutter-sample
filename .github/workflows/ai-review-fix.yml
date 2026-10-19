@@ -2,7 +2,7 @@
 # Triggers:
 #   - a review submitted with "Request changes"            (fully automatic)
 #   - an "[AI-REVIEW] CHANGES_REQUESTED" review from ai-claude-review.yml (fully automatic)
-#   - a PR comment or review body that mentions @claude      (on demand)
+#   - a PR comment or review body that mentions @droid (or @claude) (on demand)
 # Only repo owners / members / collaborators can trigger it, and only on PRs from this repo.
 name: AI Review Fix
 
@@ -23,7 +23,7 @@ jobs:
       (
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
-        contains(github.event.comment.body, '@claude') &&
+        (contains(github.event.comment.body, '@droid') || contains(github.event.comment.body, '@claude')) &&
         !startsWith(github.event.comment.body, '[AI-FIX]') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       ) || (
@@ -31,6 +31,7 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         (github.event.review.state == 'changes_requested' ||
          startsWith(github.event.review.body || '', '[AI-REVIEW] CHANGES_REQUESTED') ||
+         contains(github.event.review.body || '', '@droid') ||
          contains(github.event.review.body || '', '@claude')) &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
       )
