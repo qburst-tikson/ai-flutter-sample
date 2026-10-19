@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
-import '../../../home/presentation/pages/home_page.dart';
+import '../../../main_shell/presentation/pages/main_shell_page.dart';
 import '../cubit/login_cubit.dart';
 
 class LoginPage extends StatelessWidget {
@@ -50,7 +50,7 @@ class _LoginViewState extends State<LoginView> {
         switch (state) {
           case LoginSuccess():
             Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(builder: (_) => const HomePage()),
+              MaterialPageRoute<void>(builder: (_) => const MainShellPage()),
             );
           case LoginError(:final message):
             _emailController.clear();
