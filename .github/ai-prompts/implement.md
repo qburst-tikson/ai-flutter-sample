@@ -4,6 +4,12 @@ The Jira ticket is in .ai/ticket.md. The APPROVED plan is in .ai/plan.md.
 Implement exactly that plan — no scope creep. If something in the plan turns out
 to be impossible or wrong, make the smallest sensible deviation and record it.
 
+Design screenshots: if .ai/ticket.md has a "Design screenshots" section, open every listed image
+in .ai/design/ before writing UI code and match it as closely as you can: layout, order of
+elements, texts, colours, font sizes/weights, spacing, corner radius, icons. Where the image is
+ambiguous, pick the closest Material 3 equivalent and note it under "Deviations" in .ai/pr.md.
+Never commit the screenshots themselves.
+
 Rules:
 1. Work through the plan's Steps in order. After each step, stage only the
    relevant files and make ONE commit using the commit format in CLAUDE.md,

@@ -8,6 +8,10 @@ Inputs:
 - .ai/plan.md — the approved plan (may be empty)
 - .ai/previous_reviews.md — your earlier review rounds on this PR and the fixes made since (may be empty)
 You may read any file in the repo for context. Do NOT modify any project file.
+If .ai/ticket.md has a "Design screenshots" section, open those images in .ai/design/ and compare
+them with the UI code: missing or extra elements, wrong order, wrong texts, clearly different
+colours/sizes/spacing. A missing element or wrong text from the design is "major"; small visual
+differences are "minor".
 
 Review for, in this order:
 1. Correctness: does the code do what the ticket and plan require? Missed acceptance criteria?

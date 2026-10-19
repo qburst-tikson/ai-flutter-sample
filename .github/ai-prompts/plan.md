@@ -4,6 +4,12 @@ Read the Jira ticket in .ai/ticket.md (it includes all comments — if the
 reviewer left feedback on an earlier [AI-PLAN], address it in this new plan).
 Explore the codebase to understand the current architecture.
 
+Design screenshots: if .ai/ticket.md has a "Design screenshots" section, open every listed
+image in .ai/design/ (use your file-reading tool; it can view images). Describe in the plan
+what each screen contains (layout top to bottom, components, texts, colours, spacing) and how
+you will build it. Prefer theme colours/text styles from lib/core/theme; if the design needs
+new ones, add them to the theme rather than hard-coding values in widgets.
+
 DO NOT modify any project code. Your only output is the file .ai/plan.md.
 
 Write .ai/plan.md in this exact structure (Jira wiki markup is fine, plain markdown is fine too):

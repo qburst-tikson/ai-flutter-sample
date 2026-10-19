@@ -117,6 +117,10 @@ jobs:
           if [[ -n "$ISSUE_KEY" ]]; then
             chmod +x scripts/jira.sh
             scripts/jira.sh fetch "$ISSUE_KEY" > .ai/ticket.md 2>/dev/null || true
+            bash <(git show origin/main:scripts/jira.sh) attachments "$ISSUE_KEY" .ai/design || true
+            if [[ -s .ai/design/index.md ]]; then
+              { echo; echo "## Design screenshots (attached to the Jira ticket)"; echo "Open each image and match the UI to it:"; cat .ai/design/index.md; } >> .ai/ticket.md
+            fi
             scripts/jira.sh latest-plan "$ISSUE_KEY" > .ai/plan.md 2>/dev/null || true
           fi
           cat .ai/review.md

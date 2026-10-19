@@ -48,6 +48,10 @@ jobs:
           chmod +x scripts/jira.sh
           mkdir -p .ai
           scripts/jira.sh fetch "$ISSUE_KEY" > .ai/ticket.md
+          scripts/jira.sh attachments "$ISSUE_KEY" .ai/design || true
+          if [[ -s .ai/design/index.md ]]; then
+            { echo; echo "## Design screenshots (attached to the Jira ticket)"; echo "Open each image and match the UI to it:"; cat .ai/design/index.md; } >> .ai/ticket.md
+          fi
           cat .ai/ticket.md
 
       - name: Claude writes the plan

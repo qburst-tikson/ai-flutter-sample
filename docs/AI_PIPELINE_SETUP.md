@@ -188,3 +188,17 @@ With `AI_ENGINE=factory`:
 5. Factory's own PR review action is not used (removed to avoid extra Factory credit use); Claude does all AI reviews.
 
 A human still approves and merges. Turn on branch protection for `main` (1 approval + CI) to enforce it.
+
+## Design screenshots in tickets
+
+Attach screenshots of the target screens to the Jira ticket (PNG/JPG/WebP/GIF, up to 8 images,
+max 10 MB each; images pasted into the description count too). Every AI step downloads them
+into `.ai/design/` and lists them in `.ai/ticket.md`:
+
+- **Plan**: describes each screen and how it will be built.
+- **Implement / fix**: matches layout, texts, colours and spacing as closely as possible.
+- **Claude review**: compares the UI code with the screenshots; missing elements or wrong
+  texts block the merge, small visual differences are minor notes.
+
+Tips: one clear, phone-sized image per screen with a meaningful file name, and write the main
+colour hex values, custom fonts and tap behaviour in the description.

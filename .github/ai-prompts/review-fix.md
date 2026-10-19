@@ -3,6 +3,8 @@ You are the review-fix agent for this Flutter project. Follow CLAUDE.md strictly
 A reviewer left feedback on this pull request. It is in .ai/review.md
 (PR description, review summaries, inline code comments with file:line, and conversation).
 For context, the Jira ticket is in .ai/ticket.md and the approved plan in .ai/plan.md (may be empty).
+If .ai/ticket.md lists design screenshots (in .ai/design/), open them when a request is about
+the UI and match the design.
 You are already on the PR branch; `git log` and `git diff origin/main...HEAD` show what the PR contains.
 
 Do this:

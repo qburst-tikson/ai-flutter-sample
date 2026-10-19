@@ -8,6 +8,7 @@
 #   jira.sh latest-plan KEY            -> body of the latest "[AI-PLAN]" comment
 #   jira.sh comment     KEY FILE       -> add FILE's content as a comment
 #   jira.sh transition  KEY "Name"     -> move ticket using the transition called "Name"
+#   jira.sh attachments KEY DIR        -> download image attachments (design screenshots) into DIR
 set -euo pipefail
 
 : "${JIRA_BASE_URL:?JIRA_BASE_URL not set}"
@@ -86,6 +87,36 @@ case "$cmd" in
     fi
     api -X POST "$BASE/issue/$key/transitions" -d "{\"transition\":{\"id\":\"$id\"}}" > /dev/null
     echo "Moved $key via '$name'"
+    ;;
+
+  attachments)
+    # Downloads image attachments (design screenshots) into DIR and lists them in DIR/index.md.
+    dir="${3:?directory required}"
+    mkdir -p "$dir"
+    max_files=8
+    max_bytes=$((10 * 1024 * 1024))
+    list="$(api "$BASE/issue/$key?fields=attachment" | jq -c --argjson max "$max_bytes" '
+      [(.fields.attachment // [])[]
+        | select((.mimeType // "") | test("^image/(png|jpe?g|webp|gif)$"))
+        | select((.size // 0) <= $max)]
+      | sort_by(.created) | .[]')"
+    n=0
+    : > "$dir/index.md"
+    while IFS= read -r a; do
+      [[ -n "$a" ]] || continue
+      [[ $n -lt $max_files ]] || { echo "WARN: more than $max_files images on $key; extra ones skipped." >&2; break; }
+      id="$(jq -r .id <<<"$a")"
+      name="$(jq -r .filename <<<"$a" | tr -c 'A-Za-z0-9._-' '_')"
+      url="$(jq -r .content <<<"$a")"
+      out="$dir/${id}_${name}"
+      if curl -fsSL -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -o "$out" "$url"; then
+        echo "- \`$out\` — $(jq -r '.filename + " (" + .mimeType + ", added " + (.created[0:10]) + ")"' <<<"$a")" >> "$dir/index.md"
+        n=$((n + 1))
+      else
+        echo "WARN: could not download attachment $id ($name)." >&2
+      fi
+    done <<<"$list"
+    echo "Downloaded $n image attachment(s) from $key into $dir" >&2
     ;;
 
   *)
