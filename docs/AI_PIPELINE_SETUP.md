@@ -185,6 +185,6 @@ With `AI_ENGINE=factory`:
 3. **ai-review-fix.yml** reacts to `CHANGES_REQUESTED` and has the engine in `AI_ENGINE` (Factory) fix the
    issues on the same branch and push. The push triggers the next Claude review.
 4. After `AI_REVIEW_MAX_ROUNDS` (default 3) Claude reviews, it stops and asks a human.
-5. Factory's own auto review (droid-review.yml) skips `ai:factory` PRs, so no AI ever reviews its own code.
+5. Factory's own PR review action is not used (removed to avoid extra Factory credit use); Claude does all AI reviews.
 
 A human still approves and merges. Turn on branch protection for `main` (1 approval + CI) to enforce it.
