@@ -171,3 +171,20 @@ prompt file from `.github/ai-prompts/`:
 
 Droids read `AGENTS.md`, which points them to `CLAUDE.md`, so both engines follow the same rules.
 Pushing is still done only by the workflow, never by the AI.
+
+---
+
+## Cross-review loop: Factory builds, Claude reviews, Factory fixes
+
+With `AI_ENGINE=factory`:
+
+1. Factory Droid plans and implements; the PR gets the label `ai:factory`.
+2. **ai-claude-review.yml**: Claude reviews every `ai:factory` PR (on open and after every push) and posts
+   - `[AI-REVIEW] CHANGES_REQUESTED` with a list of blocker/major issues, or
+   - `[AI-REVIEW] APPROVED` when it is ready for a human.
+3. **ai-review-fix.yml** reacts to `CHANGES_REQUESTED` and has the engine in `AI_ENGINE` (Factory) fix the
+   issues on the same branch and push. The push triggers the next Claude review.
+4. After `AI_REVIEW_MAX_ROUNDS` (default 3) Claude reviews, it stops and asks a human.
+5. Factory's own auto review (droid-review.yml) skips `ai:factory` PRs, so no AI ever reviews its own code.
+
+A human still approves and merges. Turn on branch protection for `main` (1 approval + CI) to enforce it.

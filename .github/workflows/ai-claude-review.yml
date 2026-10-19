@@ -1,0 +1,144 @@
+# Independent AI review: Claude reviews PRs written by Factory Droid (label ai:factory).
+#  - Issues found  -> posts "[AI-REVIEW] CHANGES_REQUESTED" review -> ai-review-fix.yml makes
+#                     the AI fix them on the same branch -> the push triggers a new review.
+#  - Clean         -> posts "[AI-REVIEW] APPROVED" -> ready for human merge.
+# Max 3 review rounds per PR, then it hands over to a human.
+name: AI Claude Review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened, synchronize, labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review"
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ai:factory'))
+    concurrency:
+      group: ai-claude-review-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      MAX_ROUNDS: ${{ vars.AI_REVIEW_MAX_ROUNDS || '3' }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Decide whether to review
+        id: gate
+        run: |
+          pr="$(gh api "repos/$REPO/pulls/$PR_NUMBER")"
+          labels="$(jq -r '[.labels[].name] | join(",")' <<<"$pr")"
+          state="$(jq -r .state <<<"$pr")"; draft="$(jq -r .draft <<<"$pr")"
+          echo "::notice title=PR::#$PR_NUMBER labels=[$labels] state=$state draft=$draft"
+          go=true
+          [[ "$state" == "open" && "$draft" == "false" ]] || go=false
+          [[ ",$labels," == *",ai:factory,"* ]] || { echo "::notice::Not an ai:factory PR — skipping Claude review."; go=false; }
+          rounds="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate --jq '[.[] | select(.body | startswith("[AI-REVIEW]"))] | length' | awk '{s+=$1} END {print s+0}')"
+          echo "rounds=$rounds" >> "$GITHUB_OUTPUT"
+          if [[ "$go" == "true" && "$rounds" -ge "$MAX_ROUNDS" ]]; then
+            last="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate --jq '[.[] | select(.body | startswith("[AI-REVIEW] Max rounds"))] | length' | awk '{s+=$1} END {print s+0}')"
+            if [[ "$last" -eq 0 ]]; then
+              gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="[AI-REVIEW] Max rounds ($MAX_ROUNDS) reached — a human reviewer needs to take over this PR." >/dev/null
+            fi
+            go=false
+          fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+          echo "head=$(jq -r .head.ref <<<"$pr")" >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r .head.sha <<<"$pr")" >> "$GITHUB_OUTPUT"
+          echo "ISSUE_KEY=$(grep -oE '[A-Z][A-Z0-9]+-[0-9]+' <<<"$(jq -r .head.ref <<<"$pr")" | head -n1 || true)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.go == 'true'
+        with:
+          ref: ${{ steps.gate.outputs.head }}
+          fetch-depth: 0
+
+      - name: Collect review context
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          mkdir -p .ai
+          git fetch -q origin main
+          git diff origin/main...HEAD > .ai/diff.patch
+          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '"# \(.title)\n\n\(.body // "")"' > .ai/pr.md
+          gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
+            --jq '.[] | select(.body | startswith("[AI-REVIEW]")) | "## Review \(.submitted_at)\n\(.body)\n"' > .ai/previous_reviews.md || true
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.body | startswith("[AI-FIX] Done")) | "## Fix \(.created_at)\n\(.body)\n"' >> .ai/previous_reviews.md || true
+          if [[ -n "$ISSUE_KEY" ]]; then
+            chmod +x scripts/jira.sh
+            scripts/jira.sh fetch "$ISSUE_KEY" > .ai/ticket.md 2>/dev/null || true
+            scripts/jira.sh latest-plan "$ISSUE_KEY" > .ai/plan.md 2>/dev/null || true
+          fi
+          echo "::notice title=Diff::$(wc -l < .ai/diff.patch) lines, round $(( ${{ steps.gate.outputs.rounds }} + 1 ))"
+
+      - name: Claude reviews the PR
+        id: claude
+        if: steps.gate.outputs.go == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*)"
+          prompt: |
+            Read the file .github/ai-prompts/review.md and follow its instructions exactly.
+
+      - name: Post the review
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          f=.ai/review.json
+          if ! jq -e '.verdict' "$f" >/dev/null 2>&1; then
+            echo "::error title=Review::Claude did not produce a valid .ai/review.json"; exit 1
+          fi
+          verdict="$(jq -r .verdict "$f")"
+          round=$(( ${{ steps.gate.outputs.rounds }} + 1 ))
+          if [[ "$verdict" == "changes" ]]; then tag="[AI-REVIEW] CHANGES_REQUESTED"; else tag="[AI-REVIEW] APPROVED"; fi
+          {
+            echo "$tag — round $round of $MAX_ROUNDS (reviewer: Claude)"
+            echo
+            jq -r .summary "$f"
+            echo
+            if [[ "$(jq '.issues | length' "$f")" -gt 0 ]]; then
+              echo "### Issues"
+              jq -r '.issues[] | "- **[\(.severity)]** `\(.path)\(if .line then ":\(.line)" else "" end)` — **\(.title)**: \(.detail)"' "$f"
+              echo
+            fi
+            if [[ "$verdict" == "changes" ]]; then
+              echo "_The AI will now fix the blocker/major issues on this branch and push. A new review runs after the push._"
+            else
+              echo "_No blocking issues. Ready for human review and merge._"
+            fi
+          } > .ai/review_body.md
+          # The PR author is the bot account, so GitHub only allows a COMMENT-type review here.
+          jq -n --rawfile body .ai/review_body.md --arg sha "${{ steps.gate.outputs.sha }}" \
+            '{event:"COMMENT", body:$body, commit_id:$sha}' \
+            | gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --input - > /dev/null
+          echo "::notice title=Review posted::$tag (round $round)"
+          if [[ -n "$ISSUE_KEY" ]]; then
+            printf '%s on PR #%s (round %s)\n%s\n' "$tag" "$PR_NUMBER" "$round" "${{ github.server_url }}/$REPO/pull/$PR_NUMBER" > .ai/jira-review.md
+            scripts/jira.sh comment "$ISSUE_KEY" .ai/jira-review.md || true
+          fi
+
+      - name: Report failure on the PR
+        if: failure() && steps.gate.outputs.go == 'true'
+        run: |
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="[AI-REVIEW] Failed — the Claude review run did not complete. Logs: $RUN_URL" > /dev/null || true

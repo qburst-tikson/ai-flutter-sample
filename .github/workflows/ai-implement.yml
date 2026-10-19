@@ -175,12 +175,15 @@ jobs:
           draft=""
           [[ "${{ steps.verify.outcome }}" == "success" ]] || draft="--draft"
 
+          engine="${{ vars.AI_ENGINE || 'claude' }}"
+          gh label create "ai:$engine" --repo "${{ github.repository }}" --color 7057ff \
+            --description "PR written by the $engine AI pipeline" --force >/dev/null 2>&1 || true
           existing="$(gh pr list --head "$BRANCH" --state open --json url -q '.[0].url')"
           if [[ -n "$existing" ]]; then
             url="$existing"
             gh pr edit "$url" --body-file .ai/pr.md
           else
-            url="$(gh pr create --base "$BASE_BRANCH" --head "$BRANCH" --title "$title" --body-file .ai/pr.md $draft)"
+            url="$(gh pr create --base "$BASE_BRANCH" --head "$BRANCH" --title "$title" --body-file .ai/pr.md --label "ai:$engine" $draft)"
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
