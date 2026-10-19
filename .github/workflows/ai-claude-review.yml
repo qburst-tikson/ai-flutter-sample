@@ -106,7 +106,18 @@ jobs:
         if: steps.gate.outputs.go == 'true'
         run: |
           f=.ai/review.json
+          exe="${{ steps.claude.outputs.execution_file }}"
+          # Fallbacks: JSON wrapped in a code fence, or only in Claude's final message.
+          if [[ -f "$f" ]] && ! jq -e '.verdict' "$f" >/dev/null 2>&1; then
+            sed -n '/^[[:space:]]*{/,/^[[:space:]]*}[[:space:]]*$/p' "$f" > .ai/review.clean.json && mv .ai/review.clean.json "$f"
+          fi
+          if ! jq -e '.verdict' "$f" >/dev/null 2>&1 && [[ -f "$exe" ]]; then
+            jq -r '[.[] | select(.type=="result")] | last | .result // ""' "$exe" \
+              | sed -n '/^[[:space:]]*{/,/^[[:space:]]*}[[:space:]]*$/p' > "$f" || true
+          fi
           if ! jq -e '.verdict' "$f" >/dev/null 2>&1; then
+            echo "::error title=Review file::$( (ls -la .ai; head -c 400 "$f" 2>/dev/null) | tr '\n' ' ' | head -c 900)"
+            [[ -f "$exe" ]] && echo "::error title=Claude result::$(jq -r '[.[] | select(.type=="result")] | last | ((.subtype // "") + ": " + ((.result // "") | tostring))' "$exe" | tr '\n' ' ' | head -c 900)"
             echo "::error title=Review::Claude did not produce a valid .ai/review.json"; exit 1
           fi
           verdict="$(jq -r .verdict "$f")"
