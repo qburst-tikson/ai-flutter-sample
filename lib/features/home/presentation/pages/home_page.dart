@@ -25,7 +25,7 @@ class HomeView extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Log out?'),
+        title: const Text('Logout?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -33,7 +33,7 @@ class HomeView extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Log out'),
+            child: const Text('Logout'),
           ),
         ],
       ),
@@ -54,7 +54,7 @@ class HomeView extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            tooltip: 'Log out',
+            tooltip: 'Logout',
             onPressed: () => _confirmLogout(context),
           ),
         ],

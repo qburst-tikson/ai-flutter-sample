@@ -87,9 +87,9 @@ void main() {
     await tester.tap(find.byIcon(Icons.logout));
     await tester.pumpAndSettle();
 
-    expect(find.text('Log out?'), findsOneWidget);
+    expect(find.text('Logout?'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
-    expect(find.text('Log out'), findsOneWidget);
+    expect(find.text('Logout'), findsOneWidget);
   });
 
   testWidgets('stays on Home when Cancel is tapped', (tester) async {
@@ -104,7 +104,7 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Log out?'), findsNothing);
+    expect(find.text('Logout?'), findsNothing);
     expect(find.byType(HomeView), findsOneWidget);
     expect(find.byType(LoginView), findsNothing);
   });
@@ -123,7 +123,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.logout));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Log out'));
+    await tester.tap(find.text('Logout'));
     await tester.pumpAndSettle();
 
     expect(find.byType(LoginView), findsOneWidget);
