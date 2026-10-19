@@ -1,0 +1,62 @@
+# When a PR is merged, close its Jira ticket: comment with the PR link + merge commit,
+# then move the ticket to "Done" (override with the repo variable JIRA_DONE_STATUS).
+# The Jira key is taken from the branch name (feature/SCRUM-7-...) or the PR title ([SCRUM-7] ...).
+name: Jira Done on Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  done:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+      MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      DONE_STATUS: ${{ vars.JIRA_DONE_STATUS || 'Done' }}
+    steps:
+      - name: Find the Jira key
+        id: key
+        run: |
+          key="$(grep -oE '[A-Z][A-Z0-9]+-[0-9]+' <<<"$HEAD_REF" | head -n1 || true)"
+          [[ -n "$key" ]] || key="$(grep -oE '[A-Z][A-Z0-9]+-[0-9]+' <<<"$PR_TITLE" | head -n1 || true)"
+          if [[ -z "$key" ]]; then
+            echo "::notice::No Jira key in branch '$HEAD_REF' or title — nothing to close."
+          else
+            echo "::notice title=Jira::Closing $key for PR #$PR_NUMBER"
+          fi
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.key != ''
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: scripts
+
+      - name: Comment and move to Done
+        if: steps.key.outputs.key != ''
+        env:
+          ISSUE_KEY: ${{ steps.key.outputs.key }}
+        run: |
+          chmod +x scripts/jira.sh
+          mkdir -p .ai
+          {
+            echo "[AI-DONE] PR #$PR_NUMBER merged into $BASE_REF by $MERGED_BY."
+            echo "PR: $PR_URL"
+            echo "Merge commit: ${{ github.server_url }}/${{ github.repository }}/commit/$MERGE_SHA"
+          } > .ai/jira-merged.md
+          scripts/jira.sh comment "$ISSUE_KEY" .ai/jira-merged.md
+          scripts/jira.sh transition "$ISSUE_KEY" "$DONE_STATUS"

@@ -202,3 +202,11 @@ into `.ai/design/` and lists them in `.ai/ticket.md`:
 
 Tips: one clear, phone-sized image per screen with a meaningful file name, and write the main
 colour hex values, custom fonts and tap behaviour in the description.
+
+## Closing tickets and protecting main
+
+- **ai-jira-done.yml**: when a PR is merged, the ticket (key from the branch name or PR title)
+  gets an `[AI-DONE]` comment with the PR link and merge commit, then moves to `Done`
+  (override with the repo variable `JIRA_DONE_STATUS`).
+- **Branch protection on `main`**: changes only through a PR, the `check` CI job must pass,
+  force pushes and deletion are blocked, also for admins. Merged branches are deleted automatically.
