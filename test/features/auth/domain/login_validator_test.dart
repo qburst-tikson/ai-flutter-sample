@@ -52,8 +52,30 @@ void main() {
       );
     });
 
-    test('accepts exactly 6 characters', () {
-      expect(LoginValidator.validatePassword('123456'), isNull);
+    test('length message wins for a short mixed password', () {
+      expect(
+        LoginValidator.validatePassword('ab12'),
+        LoginValidator.passwordTooShortMessage,
+      );
+    });
+
+    test('rejects letters only even with 6 characters', () {
+      expect(
+        LoginValidator.validatePassword('abcdef'),
+        LoginValidator.passwordLettersAndNumbersMessage,
+      );
+    });
+
+    test('rejects numbers only even with 6 characters', () {
+      expect(
+        LoginValidator.validatePassword('123456'),
+        LoginValidator.passwordLettersAndNumbersMessage,
+      );
+    });
+
+    test('accepts letters and numbers', () {
+      expect(LoginValidator.validatePassword('abc123'), isNull);
+      expect(LoginValidator.validatePassword('Avenger123'), isNull);
     });
   });
 }
