@@ -89,6 +89,9 @@ jobs:
           git config user.email "claude-ai-bot@users.noreply.github.com"
           echo "START_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           printf '%s' "$ISSUE_KEY" > .ai/jira_key.txt
+          # Always use the current instructions from main, not the (possibly older) PR branch.
+          git fetch -q origin main
+          git show origin/main:.github/ai-prompts/review-fix.md > .ai/instructions.md
 
           # Only feedback newer than the last finished AI fix is "new".
           ghall() { gh api "$1" --paginate | jq -s 'add // []'; }
@@ -128,7 +131,7 @@ jobs:
             --max-turns 100
             --allowedTools "Read,Glob,Grep,Edit,Write,MultiEdit,Bash(flutter:*),Bash(dart:*),Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rm:*),Bash(git mv:*),Bash(ls:*),Bash(mkdir:*)"
           prompt: |
-            Read the file .github/ai-prompts/review-fix.md and follow its instructions exactly.
+            Read the file .ai/instructions.md and follow its instructions exactly.
 
       - name: Factory Droid addresses the feedback
         id: droid
@@ -147,7 +150,7 @@ jobs:
           model_args=()
           [[ -n "$FACTORY_MODEL" ]] && model_args=(-m "$FACTORY_MODEL")
           set +e
-          droid exec --auto medium "${model_args[@]}" -o json -f .github/ai-prompts/review-fix.md > .ai/droid.json 2> .ai/droid.err
+          droid exec --auto medium "${model_args[@]}" -o json -f .ai/instructions.md > .ai/droid.json 2> .ai/droid.err
           rc=$?
           set -e
           echo "::notice title=Droid run::exit=$rc $(jq -r '"turns=\(.num_turns // "?") duration_ms=\(.duration_ms // "?")"' .ai/droid.json 2>/dev/null)"

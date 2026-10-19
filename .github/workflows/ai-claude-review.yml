@@ -77,6 +77,8 @@ jobs:
           mkdir -p .ai
           git fetch -q origin main
           git diff origin/main...HEAD > .ai/diff.patch
+          # Always use the current instructions from main, not the (possibly older) PR branch.
+          git show origin/main:.github/ai-prompts/review.md > .ai/instructions.md
           gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '"# \(.title)\n\n\(.body // "")"' > .ai/pr.md
           gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
             --jq '.[] | select(.body | startswith("[AI-REVIEW]")) | "## Review \(.submitted_at)\n\(.body)\n"' > .ai/previous_reviews.md || true
@@ -100,7 +102,7 @@ jobs:
             --max-turns 40
             --allowedTools "Read,Glob,Grep,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*)"
           prompt: |
-            Read the file .github/ai-prompts/review.md and follow its instructions exactly.
+            Read the file .ai/instructions.md and follow its instructions exactly.
 
       - name: Post the review
         if: steps.gate.outputs.go == 'true'
