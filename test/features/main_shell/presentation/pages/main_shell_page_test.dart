@@ -1,0 +1,182 @@
+import 'package:ai_flutter_sample/core/di/injection.dart';
+import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
+import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
+import 'package:ai_flutter_sample/features/home/domain/entities/greeting.dart';
+import 'package:ai_flutter_sample/features/home/presentation/cubit/home_cubit.dart';
+import 'package:ai_flutter_sample/features/home/presentation/pages/home_page.dart';
+import 'package:ai_flutter_sample/features/main_shell/presentation/cubit/main_shell_cubit.dart';
+import 'package:ai_flutter_sample/features/main_shell/presentation/pages/main_shell_page.dart';
+import 'package:ai_flutter_sample/features/search/presentation/pages/search_page.dart';
+import 'package:ai_flutter_sample/features/settings/presentation/pages/settings_page.dart';
+import 'package:bloc_test/bloc_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+
+class _MockHomeCubit extends MockCubit<HomeState> implements HomeCubit {}
+
+class _MockLoginCubit extends MockCubit<LoginState> implements LoginCubit {}
+
+void main() {
+  late _MockHomeCubit homeCubit;
+
+  setUp(() {
+    homeCubit = _MockHomeCubit();
+    when(() => homeCubit.state).thenReturn(
+      const HomeLoaded(Greeting(title: 'Hi', message: 'Hello there')),
+    );
+    when(() => homeCubit.load()).thenAnswer((_) async {});
+    sl.registerFactory<HomeCubit>(() => homeCubit);
+    sl.registerFactory<MainShellCubit>(MainShellCubit.new);
+  });
+
+  tearDown(() async {
+    await sl.reset();
+  });
+
+  Future<void> pumpShell(WidgetTester tester) =>
+      tester.pumpWidget(const MaterialApp(home: MainShellPage()));
+
+  Future<void> swipe(WidgetTester tester, Offset offset) async {
+    await tester.drag(find.byType(PageView), offset);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('shows the three tabs in order with their icons', (tester) async {
+    await pumpShell(tester);
+
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(
+      find.descendant(
+          of: find.byType(NavigationBar), matching: find.text('Home')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+          of: find.byType(NavigationBar), matching: find.text('Search')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+          of: find.byType(NavigationBar), matching: find.text('Settings')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.home), findsOneWidget);
+    expect(find.byIcon(Icons.search_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+  });
+
+  testWidgets('shows the Home tab by default', (tester) async {
+    await pumpShell(tester);
+
+    expect(find.byType(HomeView), findsOneWidget);
+    expect(find.byType(SearchView), findsNothing);
+    expect(find.byType(SettingsView), findsNothing);
+  });
+
+  testWidgets('tapping Search shows the Search screen and highlights the tab', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SearchView), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byType(HomeView), findsNothing);
+  });
+
+  testWidgets(
+    'tapping Settings shows the Settings screen and highlights the tab',
+    (tester) async {
+      await pumpShell(tester);
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsView), findsOneWidget);
+      expect(find.byIcon(Icons.settings), findsOneWidget);
+      expect(find.byType(HomeView), findsNothing);
+    },
+  );
+
+  testWidgets('swiping left moves to Search and highlights its tab', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await swipe(tester, const Offset(-500, 0));
+
+    expect(find.byType(SearchView), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsOneWidget);
+  });
+
+  testWidgets('swiping right from Search moves back to Home', (tester) async {
+    await pumpShell(tester);
+
+    await swipe(tester, const Offset(-500, 0));
+    await swipe(tester, const Offset(500, 0));
+
+    expect(find.byType(HomeView), findsOneWidget);
+    expect(find.byIcon(Icons.home), findsOneWidget);
+  });
+
+  testWidgets('swiping left twice reaches Settings', (tester) async {
+    await pumpShell(tester);
+
+    await swipe(tester, const Offset(-500, 0));
+    await swipe(tester, const Offset(-500, 0));
+
+    expect(find.byType(SettingsView), findsOneWidget);
+    expect(find.byIcon(Icons.settings), findsOneWidget);
+  });
+
+  testWidgets('swiping right on Home stays clamped on Home', (tester) async {
+    await pumpShell(tester);
+
+    await swipe(tester, const Offset(500, 0));
+
+    expect(find.byType(HomeView), findsOneWidget);
+    expect(find.byIcon(Icons.home), findsOneWidget);
+  });
+
+  testWidgets('swiping left on Settings stays clamped on Settings', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+    await swipe(tester, const Offset(-500, 0));
+    await swipe(tester, const Offset(-500, 0));
+
+    await swipe(tester, const Offset(-500, 0));
+
+    expect(find.byType(SettingsView), findsOneWidget);
+    expect(find.byType(HomeView), findsNothing);
+  });
+
+  testWidgets('logout from the Home tab returns to Login and clears the stack',
+      (
+    tester,
+  ) async {
+    final loginCubit = _MockLoginCubit();
+    when(() => loginCubit.state).thenReturn(const LoginInitial());
+    sl.registerFactory<LoginCubit>(() => loginCubit);
+
+    await pumpShell(tester);
+
+    await tester.tap(find.byIcon(Icons.logout));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Logout'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoginView), findsOneWidget);
+    expect(find.byType(MainShellView), findsNothing);
+    expect(find.byType(HomeView), findsNothing);
+    final navigator = find.byType(Navigator).first;
+    expect(
+      tester.state<NavigatorState>(navigator).canPop(),
+      isFalse,
+      reason: 'the navigation stack should be cleared after logging out',
+    );
+  });
+}
