@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/widgets/logout_button.dart';
+import '../../../auth/presentation/widgets/logout_button.dart';
 
 class SearchPage extends StatelessWidget {
   const SearchPage({super.key});

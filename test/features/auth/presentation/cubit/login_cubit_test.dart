@@ -1,4 +1,6 @@
 import 'package:ai_flutter_sample/core/error/failure.dart';
+import 'package:ai_flutter_sample/features/auth/domain/entities/user.dart';
+import 'package:ai_flutter_sample/features/auth/domain/repositories/session_repository.dart';
 import 'package:ai_flutter_sample/features/auth/domain/usecases/login.dart';
 import 'package:ai_flutter_sample/features/auth/domain/validators/login_validator.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
@@ -8,47 +10,60 @@ import 'package:mocktail/mocktail.dart';
 
 class _MockLogin extends Mock implements Login {}
 
+class _MockSessionRepository extends Mock implements SessionRepository {}
+
 void main() {
   late _MockLogin login;
+  late _MockSessionRepository sessionRepository;
 
   const email = 'user@example.com';
   const password = 'secret1';
 
   setUpAll(() {
     registerFallbackValue(const LoginParams(email: '', password: ''));
+    registerFallbackValue(const User(email: ''));
   });
 
   setUp(() {
     login = _MockLogin();
+    sessionRepository = _MockSessionRepository();
   });
 
+  LoginCubit buildCubit() => LoginCubit(login, sessionRepository);
+
   test('initial state is LoginInitial', () {
-    expect(LoginCubit(login).state, const LoginInitial());
+    expect(buildCubit().state, const LoginInitial());
   });
 
   blocTest<LoginCubit, LoginState>(
     'emits [LoginInvalid] with an email error for an invalid email',
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login('nope', password),
     expect: () => const [
       LoginInvalid(emailError: LoginValidator.emailInvalidMessage),
     ],
-    verify: (_) => verifyNever(() => login(any())),
+    verify: (_) {
+      verifyNever(() => login(any()));
+      verifyNever(() => sessionRepository.save(any()));
+    },
   );
 
   blocTest<LoginCubit, LoginState>(
     'emits [LoginInvalid] with a password error for a short password',
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login(email, '123'),
     expect: () => const [
       LoginInvalid(passwordError: LoginValidator.passwordTooShortMessage),
     ],
-    verify: (_) => verifyNever(() => login(any())),
+    verify: (_) {
+      verifyNever(() => login(any()));
+      verifyNever(() => sessionRepository.save(any()));
+    },
   );
 
   blocTest<LoginCubit, LoginState>(
     'emits [LoginInvalid] with both errors when both fields are empty',
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login('', ''),
     expect: () => const [
       LoginInvalid(
@@ -56,21 +71,26 @@ void main() {
         passwordError: LoginValidator.passwordRequiredMessage,
       ),
     ],
-    verify: (_) => verifyNever(() => login(any())),
+    verify: (_) {
+      verifyNever(() => login(any()));
+      verifyNever(() => sessionRepository.save(any()));
+    },
   );
 
   blocTest<LoginCubit, LoginState>(
-    'emits [Loading, Success] for valid input and trims the email',
+    'emits [Loading, Success], saves the session and trims the email',
     setUp: () {
-      when(() => login(any())).thenAnswer((_) async {});
+      when(() => login(any()))
+          .thenAnswer((_) async => const User(email: email));
     },
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login('  $email ', password),
     expect: () => const [LoginLoading(), LoginSuccess()],
     verify: (_) {
       verify(
         () => login(const LoginParams(email: email, password: password)),
       ).called(1);
+      verify(() => sessionRepository.save(const User(email: email))).called(1);
     },
   );
 
@@ -80,12 +100,13 @@ void main() {
     setUp: () {
       when(() => login(any())).thenThrow(const AuthenticationFailure());
     },
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login(email, password),
     expect: () => const [
       LoginLoading(),
       LoginError('Invalid email or password'),
     ],
+    verify: (_) => verifyNever(() => sessionRepository.save(any())),
   );
 
   blocTest<LoginCubit, LoginState>(
@@ -93,12 +114,13 @@ void main() {
     setUp: () {
       when(() => login(any())).thenThrow(const NetworkFailure());
     },
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login(email, password),
     expect: () => const [
       LoginLoading(),
       LoginError('No internet connection.'),
     ],
+    verify: (_) => verifyNever(() => sessionRepository.save(any())),
   );
 
   blocTest<LoginCubit, LoginState>(
@@ -106,20 +128,22 @@ void main() {
     setUp: () {
       when(() => login(any())).thenThrow(StateError('boom'));
     },
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) => cubit.login(email, password),
     expect: () => const [
       LoginLoading(),
       LoginError('Something went wrong.'),
     ],
+    verify: (_) => verifyNever(() => sessionRepository.save(any())),
   );
 
   blocTest<LoginCubit, LoginState>(
     'ignores a second login call while loading',
     setUp: () {
-      when(() => login(any())).thenAnswer((_) async {});
+      when(() => login(any()))
+          .thenAnswer((_) async => const User(email: email));
     },
-    build: () => LoginCubit(login),
+    build: buildCubit,
     act: (cubit) {
       cubit.login(email, password);
       cubit.login(email, password);
@@ -136,7 +160,7 @@ void main() {
 
     blocTest<LoginCubit, LoginState>(
       'clears only the edited field',
-      build: () => LoginCubit(login),
+      build: buildCubit,
       seed: () => both,
       act: (cubit) => cubit.clearFieldError(email: true),
       expect: () => const [
@@ -146,7 +170,7 @@ void main() {
 
     blocTest<LoginCubit, LoginState>(
       'returns to LoginInitial once no errors remain',
-      build: () => LoginCubit(login),
+      build: buildCubit,
       seed: () =>
           const LoginInvalid(emailError: LoginValidator.emailInvalidMessage),
       act: (cubit) => cubit.clearFieldError(email: true),
@@ -155,7 +179,7 @@ void main() {
 
     blocTest<LoginCubit, LoginState>(
       'does nothing when the edited field has no error',
-      build: () => LoginCubit(login),
+      build: buildCubit,
       seed: () =>
           const LoginInvalid(emailError: LoginValidator.emailInvalidMessage),
       act: (cubit) => cubit.clearFieldError(password: true),
@@ -164,7 +188,7 @@ void main() {
 
     blocTest<LoginCubit, LoginState>(
       'does nothing outside LoginInvalid',
-      build: () => LoginCubit(login),
+      build: buildCubit,
       act: (cubit) => cubit.clearFieldError(email: true, password: true),
       expect: () => const <LoginState>[],
     );

@@ -1,5 +1,9 @@
 import 'package:ai_flutter_sample/core/di/injection.dart';
+import 'package:ai_flutter_sample/features/auth/data/repositories/in_memory_session_repository_impl.dart';
+import 'package:ai_flutter_sample/features/auth/domain/repositories/session_repository.dart';
+import 'package:ai_flutter_sample/features/auth/domain/usecases/logout.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
+import 'package:ai_flutter_sample/features/auth/presentation/cubit/logout_cubit.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_flutter_sample/features/home/domain/entities/greeting.dart';
 import 'package:ai_flutter_sample/features/home/presentation/cubit/home_cubit.dart';
@@ -19,6 +23,13 @@ void main() {
 
   setUp(() {
     cubit = _MockHomeCubit();
+    // LogoutButton resolves LogoutCubit from sl; use the real cubit with
+    // the real use case and a real in-memory session.
+    sl.registerLazySingleton<SessionRepository>(
+      () => InMemorySessionRepositoryImpl(),
+    );
+    sl.registerLazySingleton(() => Logout(sl()));
+    sl.registerFactory(() => LogoutCubit(sl()));
   });
 
   tearDown(() async {

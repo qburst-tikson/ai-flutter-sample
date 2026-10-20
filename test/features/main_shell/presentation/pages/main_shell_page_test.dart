@@ -1,5 +1,9 @@
 import 'package:ai_flutter_sample/core/di/injection.dart';
+import 'package:ai_flutter_sample/features/auth/data/repositories/in_memory_session_repository_impl.dart';
+import 'package:ai_flutter_sample/features/auth/domain/repositories/session_repository.dart';
+import 'package:ai_flutter_sample/features/auth/domain/usecases/logout.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
+import 'package:ai_flutter_sample/features/auth/presentation/cubit/logout_cubit.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_flutter_sample/features/home/domain/entities/greeting.dart';
 import 'package:ai_flutter_sample/features/home/presentation/cubit/home_cubit.dart';
@@ -7,6 +11,7 @@ import 'package:ai_flutter_sample/features/home/presentation/pages/home_page.dar
 import 'package:ai_flutter_sample/features/main_shell/presentation/cubit/main_shell_cubit.dart';
 import 'package:ai_flutter_sample/features/main_shell/presentation/pages/main_shell_page.dart';
 import 'package:ai_flutter_sample/features/search/presentation/pages/search_page.dart';
+import 'package:ai_flutter_sample/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:ai_flutter_sample/features/settings/presentation/pages/settings_page.dart';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
@@ -17,8 +22,12 @@ class _MockHomeCubit extends MockCubit<HomeState> implements HomeCubit {}
 
 class _MockLoginCubit extends MockCubit<LoginState> implements LoginCubit {}
 
+class _MockSettingsCubit extends MockCubit<SettingsState>
+    implements SettingsCubit {}
+
 void main() {
   late _MockHomeCubit homeCubit;
+  late _MockSettingsCubit settingsCubit;
 
   setUp(() {
     homeCubit = _MockHomeCubit();
@@ -28,6 +37,18 @@ void main() {
     when(() => homeCubit.load()).thenAnswer((_) async {});
     sl.registerFactory<HomeCubit>(() => homeCubit);
     sl.registerFactory<MainShellCubit>(MainShellCubit.new);
+    // SettingsPage resolves its cubit from sl; the tests here only check
+    // navigation, so a static not-logged-in state is enough.
+    settingsCubit = _MockSettingsCubit();
+    when(() => settingsCubit.state).thenReturn(const SettingsNotLoggedIn());
+    sl.registerFactory<SettingsCubit>(() => settingsCubit);
+    // LogoutButton resolves LogoutCubit from sl; use the real cubit with
+    // the real use case and a real in-memory session.
+    sl.registerLazySingleton<SessionRepository>(
+      () => InMemorySessionRepositoryImpl(),
+    );
+    sl.registerLazySingleton(() => Logout(sl()));
+    sl.registerFactory(() => LogoutCubit(sl()));
   });
 
   tearDown(() async {

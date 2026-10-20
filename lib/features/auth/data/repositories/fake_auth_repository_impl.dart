@@ -1,4 +1,5 @@
 import '../../../../core/error/failure.dart';
+import '../../domain/entities/user.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../demo_credentials.dart';
 
@@ -9,13 +10,16 @@ class FakeAuthRepositoryImpl implements AuthRepository {
   const FakeAuthRepositoryImpl();
 
   @override
-  Future<void> login({required String email, required String password}) async {
+  Future<User> login({required String email, required String password}) async {
     try {
       await Future<void>.delayed(const Duration(seconds: 1));
       final matchesEmail = email.trim().toLowerCase() == DemoCredentials.email;
       if (!matchesEmail || password != DemoCredentials.password) {
         throw const AuthenticationFailure();
       }
+      // Comparing is case-insensitive, but the user's typing is not
+      // rewritten: the saved email is the trimmed, as-entered string.
+      return User(email: email.trim());
     } on Failure {
       rethrow;
     } catch (_) {

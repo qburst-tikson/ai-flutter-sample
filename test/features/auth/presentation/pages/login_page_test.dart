@@ -1,7 +1,11 @@
 import 'dart:async';
 
 import 'package:ai_flutter_sample/core/di/injection.dart';
+import 'package:ai_flutter_sample/features/auth/data/repositories/in_memory_session_repository_impl.dart';
+import 'package:ai_flutter_sample/features/auth/domain/repositories/session_repository.dart';
+import 'package:ai_flutter_sample/features/auth/domain/usecases/logout.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
+import 'package:ai_flutter_sample/features/auth/presentation/cubit/logout_cubit.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_flutter_sample/features/home/presentation/cubit/home_cubit.dart';
 import 'package:ai_flutter_sample/features/home/presentation/pages/home_page.dart';
@@ -198,6 +202,14 @@ void main() {
     when(() => homeCubit.load()).thenAnswer((_) async {});
     sl.registerFactory<HomeCubit>(() => homeCubit);
     sl.registerFactory<MainShellCubit>(MainShellCubit.new);
+    // The Home tab's app bar builds LogoutButton, which resolves
+    // LogoutCubit from sl; the real cubit with the real use case and a
+    // real in-memory session is fine (it is never tapped here).
+    sl.registerLazySingleton<SessionRepository>(
+      () => InMemorySessionRepositoryImpl(),
+    );
+    sl.registerLazySingleton(() => Logout(sl()));
+    sl.registerFactory(() => LogoutCubit(sl()));
     whenListen(
       cubit,
       Stream<LoginState>.value(const LoginSuccess()),

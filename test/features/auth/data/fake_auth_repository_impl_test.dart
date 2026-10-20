@@ -31,6 +31,15 @@ void main() {
     );
   });
 
+  test('returns the trimmed, as-entered email on success', () async {
+    final user = await repository.login(
+      email: ' Tikson@Qburst.com ',
+      password: DemoCredentials.password,
+    );
+
+    expect(user.email, 'Tikson@Qburst.com');
+  });
+
   test('rejects a wrong email', () async {
     await expectLater(
       repository.login(email: 'user@example.com', password: 'Avenger123'),
