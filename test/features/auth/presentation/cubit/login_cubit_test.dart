@@ -1,4 +1,5 @@
 import 'package:ai_flutter_sample/core/error/failure.dart';
+import 'package:ai_flutter_sample/features/auth/domain/entities/user.dart';
 import 'package:ai_flutter_sample/features/auth/domain/usecases/login.dart';
 import 'package:ai_flutter_sample/features/auth/domain/validators/login_validator.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
@@ -62,7 +63,8 @@ void main() {
   blocTest<LoginCubit, LoginState>(
     'emits [Loading, Success] for valid input and trims the email',
     setUp: () {
-      when(() => login(any())).thenAnswer((_) async {});
+      when(() => login(any()))
+          .thenAnswer((_) async => const User(email: email));
     },
     build: () => LoginCubit(login),
     act: (cubit) => cubit.login('  $email ', password),
@@ -117,7 +119,8 @@ void main() {
   blocTest<LoginCubit, LoginState>(
     'ignores a second login call while loading',
     setUp: () {
-      when(() => login(any())).thenAnswer((_) async {});
+      when(() => login(any()))
+          .thenAnswer((_) async => const User(email: email));
     },
     build: () => LoginCubit(login),
     act: (cubit) {

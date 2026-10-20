@@ -1,15 +1,16 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../../core/usecase/usecase.dart';
+import '../entities/user.dart';
 import '../repositories/auth_repository.dart';
 
-class Login implements UseCase<void, LoginParams> {
+class Login implements UseCase<User, LoginParams> {
   const Login(this._repository);
 
   final AuthRepository _repository;
 
   @override
-  Future<void> call(LoginParams params) =>
+  Future<User> call(LoginParams params) =>
       _repository.login(email: params.email, password: params.password);
 }
 
