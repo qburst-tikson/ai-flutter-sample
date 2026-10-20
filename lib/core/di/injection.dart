@@ -1,8 +1,11 @@
 import 'package:get_it/get_it.dart';
 
 import '../../features/auth/data/repositories/fake_auth_repository_impl.dart';
+import '../../features/auth/data/repositories/in_memory_session_repository_impl.dart';
 import '../../features/auth/domain/repositories/auth_repository.dart';
+import '../../features/auth/domain/repositories/session_repository.dart';
 import '../../features/auth/domain/usecases/login.dart';
+import '../../features/auth/domain/usecases/logout.dart';
 import '../../features/auth/presentation/cubit/login_cubit.dart';
 import '../../features/home/data/repositories/greeting_repository_impl.dart';
 import '../../features/home/domain/repositories/greeting_repository.dart';
@@ -36,6 +39,10 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<AuthRepository>(
       () => const FakeAuthRepositoryImpl(),
     )
+    ..registerLazySingleton<SessionRepository>(
+      () => InMemorySessionRepositoryImpl(),
+    )
     ..registerLazySingleton(() => Login(sl()))
-    ..registerFactory(() => LoginCubit(sl()));
+    ..registerLazySingleton(() => Logout(sl()))
+    ..registerFactory(() => LoginCubit(sl(), sl()));
 }

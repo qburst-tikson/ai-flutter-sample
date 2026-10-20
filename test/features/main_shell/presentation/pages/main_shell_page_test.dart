@@ -1,4 +1,7 @@
 import 'package:ai_flutter_sample/core/di/injection.dart';
+import 'package:ai_flutter_sample/features/auth/data/repositories/in_memory_session_repository_impl.dart';
+import 'package:ai_flutter_sample/features/auth/domain/repositories/session_repository.dart';
+import 'package:ai_flutter_sample/features/auth/domain/usecases/logout.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_flutter_sample/features/home/domain/entities/greeting.dart';
@@ -28,6 +31,12 @@ void main() {
     when(() => homeCubit.load()).thenAnswer((_) async {});
     sl.registerFactory<HomeCubit>(() => homeCubit);
     sl.registerFactory<MainShellCubit>(MainShellCubit.new);
+    // LogoutButton resolves Logout from sl; use the real use case with a
+    // real in-memory session.
+    sl.registerLazySingleton<SessionRepository>(
+      () => InMemorySessionRepositoryImpl(),
+    );
+    sl.registerLazySingleton(() => Logout(sl()));
   });
 
   tearDown(() async {

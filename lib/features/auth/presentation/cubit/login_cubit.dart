@@ -2,15 +2,18 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/error/failure.dart';
+import '../../domain/repositories/session_repository.dart';
 import '../../domain/usecases/login.dart';
 import '../../domain/validators/login_validator.dart';
 
 part 'login_state.dart';
 
 class LoginCubit extends Cubit<LoginState> {
-  LoginCubit(this._login) : super(const LoginInitial());
+  LoginCubit(this._login, this._sessionRepository)
+      : super(const LoginInitial());
 
   final Login _login;
+  final SessionRepository _sessionRepository;
 
   Future<void> login(String email, String password) async {
     if (state is LoginLoading) return;
@@ -24,7 +27,11 @@ class LoginCubit extends Cubit<LoginState> {
 
     emit(const LoginLoading());
     try {
-      await _login(LoginParams(email: email.trim(), password: password));
+      final user =
+          await _login(LoginParams(email: email.trim(), password: password));
+      // Saved only after success, so a failed login never leaves a stale
+      // user behind; re-login overwrites the previous email.
+      _sessionRepository.save(user);
       emit(const LoginSuccess());
     } on Failure catch (failure) {
       emit(LoginError(failure.message));
