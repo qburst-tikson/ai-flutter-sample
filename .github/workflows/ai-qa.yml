@@ -1,0 +1,164 @@
+# QA stage: every push to develop (usually an AI PR merged after Claude approved it) ->
+#   1. build a debug APK of develop and publish it as the "develop-latest" pre-release
+#   2. Claude writes a manual QA checklist for each Jira ticket in the push
+#   3. each ticket gets an "[AI-QA]" comment (APK link + checklist) and moves to "QA"
+# Release to main later moves the tickets to Done (ai-jira-done.yml).
+name: AI QA (develop)
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      issue_key:
+        description: "Jira key to (re)send to QA, e.g. SCRUM-7 (empty = keys from the last commit)"
+        required: false
+
+concurrency:
+  group: ai-qa
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+      BEFORE: ${{ github.event.before }}
+      INPUT_KEY: ${{ inputs.issue_key }}
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      QA_STATUS: ${{ vars.JIRA_QA_STATUS || 'QA' }}
+      RELEASE_TAG: develop-latest
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find the tickets in this push
+        id: keys
+        run: |
+          mkdir -p .ai/qa
+          grep -qxF '.ai/' .git/info/exclude || echo '.ai/' >> .git/info/exclude
+          if [[ -n "$INPUT_KEY" ]]; then
+            echo "$INPUT_KEY" > .ai/qa/keys.txt
+            range="HEAD~1..HEAD"
+          else
+            if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              range="HEAD~1..HEAD"
+            else
+              range="$BEFORE..$SHA"
+            fi
+            git log --format='%s%n%b' "$range" | grep -oE '\b[A-Z][A-Z0-9]+-[0-9]+\b' | sort -u > .ai/qa/keys.txt || true
+          fi
+          git diff "${range%%..*}" "${range##*..}" > .ai/qa/diff.patch || true
+          git log --oneline "$range" > .ai/qa/commits.txt || true
+          count="$(grep -c . .ai/qa/keys.txt || true)"
+          echo "::notice title=QA::range=$range tickets: $(tr '\n' ' ' < .ai/qa/keys.txt)"
+          echo "count=${count:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Load tickets and plans
+        if: steps.keys.outputs.count != '0'
+        run: |
+          chmod +x scripts/jira.sh
+          : > .ai/qa/valid_keys.txt
+          while read -r key; do
+            [[ -n "$key" ]] || continue
+            mkdir -p ".ai/qa/$key"
+            if scripts/jira.sh fetch "$key" > ".ai/qa/$key/ticket.md" 2>/dev/null; then
+              scripts/jira.sh latest-plan "$key" > ".ai/qa/$key/plan.md" 2>/dev/null || true
+              echo "$key" >> .ai/qa/valid_keys.txt
+            else
+              echo "::warning::Skipped $key (not found in Jira?)"
+              rm -rf ".ai/qa/$key"
+            fi
+          done < .ai/qa/keys.txt
+          mv .ai/qa/valid_keys.txt .ai/qa/keys.txt
+          echo "COUNT=$(grep -c . .ai/qa/keys.txt || true)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        if: steps.keys.outputs.count != '0' && env.COUNT != '0'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        if: steps.keys.outputs.count != '0' && env.COUNT != '0'
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build debug APK
+        id: apk
+        if: steps.keys.outputs.count != '0' && env.COUNT != '0'
+        run: |
+          flutter pub get
+          flutter build apk --debug
+          short="${SHA:0:7}"
+          cp build/app/outputs/flutter-apk/app-debug.apk "app-develop-$short.apk"
+          echo "file=app-develop-$short.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Publish APK (pre-release "develop-latest")
+        id: publish
+        if: steps.apk.outcome == 'success'
+        run: |
+          f="${{ steps.apk.outputs.file }}"
+          gh release delete "$RELEASE_TAG" --repo "$REPO" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$RELEASE_TAG" "$f" --repo "$REPO" --target "$SHA" --prerelease \
+            --title "Develop build for QA (${SHA:0:7})" \
+            --notes "Latest debug build of develop for QA. Commit: ${{ github.server_url }}/$REPO/commit/$SHA"
+          echo "url=${{ github.server_url }}/$REPO/releases/download/$RELEASE_TAG/$f" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the APK as a run artifact too
+        if: steps.apk.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.file }}
+          path: ${{ steps.apk.outputs.file }}
+          retention-days: 14
+
+      - name: Claude writes the QA checklists
+        id: claude
+        if: steps.keys.outputs.count != '0' && env.COUNT != '0'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --max-turns 30
+            --allowedTools "Read,Glob,Grep,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*)"
+          prompt: |
+            Read the file .github/ai-prompts/qa.md and follow its instructions exactly.
+
+      - name: Post to Jira and move tickets to QA
+        if: steps.keys.outputs.count != '0' && env.COUNT != '0'
+        run: |
+          apk="${{ steps.publish.outputs.url }}"
+          while read -r key; do
+            [[ -n "$key" ]] || continue
+            {
+              echo "[AI-QA] Ready for QA — merged into develop (${SHA:0:7})."
+              if [[ -n "$apk" ]]; then echo "APK (debug): $apk"; else echo "APK: build failed, see $RUN_URL"; fi
+              echo "Commit: ${{ github.server_url }}/$REPO/commit/$SHA"
+              echo
+              if [[ -s ".ai/qa/$key/checklist.md" ]]; then
+                cat ".ai/qa/$key/checklist.md"
+              else
+                echo "(No AI checklist this time — test against the acceptance criteria in the ticket.)"
+              fi
+              echo
+              echo "----"
+              echo "QA passed → leave in QA, it moves to Done with the next release. QA failed → comment what is wrong and move the ticket back."
+            } > ".ai/qa/$key/comment.md"
+            scripts/jira.sh comment "$key" ".ai/qa/$key/comment.md"
+            scripts/jira.sh transition "$key" "$QA_STATUS" || true
+          done < .ai/qa/keys.txt

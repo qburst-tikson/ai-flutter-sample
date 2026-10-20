@@ -5,7 +5,8 @@ A reviewer left feedback on this pull request. It is in .ai/review.md
 For context, the Jira ticket is in .ai/ticket.md and the approved plan in .ai/plan.md (may be empty).
 If .ai/ticket.md lists design screenshots (in .ai/design/), open them when a request is about
 the UI and match the design.
-You are already on the PR branch; `git log` and `git diff origin/main...HEAD` show what the PR contains.
+You are already on the PR branch. The PR's base branch name is in .ai/base_branch.txt (usually develop);
+`git diff origin/<base>...HEAD` shows what the PR contains.
 
 Do this:
 1. Make a list of every concrete change the reviewer asked for. Ignore praise and

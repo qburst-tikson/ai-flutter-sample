@@ -30,7 +30,7 @@ jobs:
       group: ai-claude-review-${{ github.event.pull_request.number || inputs.pr_number }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
       REPO: ${{ github.repository }}
@@ -40,6 +40,9 @@ jobs:
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
       MAX_ROUNDS: ${{ vars.AI_REVIEW_MAX_ROUNDS || '3' }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      # PRs into this branch are merged automatically once Claude approves and CI is green.
+      AUTO_MERGE_BASE: ${{ vars.AI_AUTO_MERGE_BASE || 'develop' }}
     steps:
       - name: Decide whether to review
         id: gate
@@ -63,6 +66,7 @@ jobs:
           echo "go=$go" >> "$GITHUB_OUTPUT"
           echo "head=$(jq -r .head.ref <<<"$pr")" >> "$GITHUB_OUTPUT"
           echo "sha=$(jq -r .head.sha <<<"$pr")" >> "$GITHUB_OUTPUT"
+          echo "BASE_REF=$(jq -r .base.ref <<<"$pr")" >> "$GITHUB_ENV"
           echo "ISSUE_KEY=$(grep -oE '[A-Z][A-Z0-9]+-[0-9]+' <<<"$(jq -r .head.ref <<<"$pr")" | head -n1 || true)" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
@@ -75,10 +79,10 @@ jobs:
         if: steps.gate.outputs.go == 'true'
         run: |
           mkdir -p .ai
-          git fetch -q origin main
-          git diff origin/main...HEAD > .ai/diff.patch
-          # Always use the current instructions from main, not the (possibly older) PR branch.
-          git show origin/main:.github/ai-prompts/review.md > .ai/instructions.md
+          git fetch -q origin "$DEFAULT_BRANCH" "$BASE_REF"
+          git diff "origin/$BASE_REF...HEAD" > .ai/diff.patch
+          # Always use the current instructions from the default branch, not the (possibly older) PR branch.
+          git show "origin/$DEFAULT_BRANCH:.github/ai-prompts/review.md" > .ai/instructions.md
           gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '"# \(.title)\n\n\(.body // "")"' > .ai/pr.md
           gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
             --jq '.[] | select(.body | startswith("[AI-REVIEW]")) | "## Review \(.submitted_at)\n\(.body)\n"' > .ai/previous_reviews.md || true
@@ -87,7 +91,7 @@ jobs:
           if [[ -n "$ISSUE_KEY" ]]; then
             chmod +x scripts/jira.sh
             scripts/jira.sh fetch "$ISSUE_KEY" > .ai/ticket.md 2>/dev/null || true
-            bash <(git show origin/main:scripts/jira.sh) attachments "$ISSUE_KEY" .ai/design || true
+            bash <(git show "origin/$DEFAULT_BRANCH:scripts/jira.sh") attachments "$ISSUE_KEY" .ai/design || true
             if [[ -s .ai/design/index.md ]]; then
               { echo; echo "## Design screenshots (attached to the Jira ticket)"; echo "Open each image and match the UI to it:"; cat .ai/design/index.md; } >> .ai/ticket.md
             fi
@@ -141,6 +145,8 @@ jobs:
             fi
             if [[ "$verdict" == "changes" ]]; then
               echo "_The AI will now fix the blocker/major issues on this branch and push. A new review runs after the push._"
+            elif [[ "$BASE_REF" == "$AUTO_MERGE_BASE" ]]; then
+              echo "_No blocking issues. It will be merged into \`$BASE_REF\` automatically once CI is green, and QA starts._"
             else
               echo "_No blocking issues. Ready for human review and merge._"
             fi
@@ -150,9 +156,35 @@ jobs:
             '{event:"COMMENT", body:$body, commit_id:$sha}' \
             | gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --input - > /dev/null
           echo "::notice title=Review posted::$tag (round $round)"
+          echo "VERDICT=$verdict" >> "$GITHUB_ENV"
           if [[ -n "$ISSUE_KEY" ]]; then
             printf '%s on PR #%s (round %s)\n%s\n' "$tag" "$PR_NUMBER" "$round" "${{ github.server_url }}/$REPO/pull/$PR_NUMBER" > .ai/jira-review.md
             scripts/jira.sh comment "$ISSUE_KEY" .ai/jira-review.md || true
+          fi
+
+      - name: Auto-merge into develop (Claude approved + CI green)
+        if: steps.gate.outputs.go == 'true' && env.VERDICT == 'approve' && env.BASE_REF == env.AUTO_MERGE_BASE
+        env:
+          SHA: ${{ steps.gate.outputs.sha }}
+        run: |
+          # Wait for the CI "check" job on this exact commit (max ~25 min).
+          ci=""
+          for i in $(seq 1 75); do
+            ci="$(gh api "repos/$REPO/commits/$SHA/check-runs?check_name=check" --jq '[.check_runs[] | select(.app.slug=="github-actions")] | sort_by(.started_at) | last | "\(.status) \(.conclusion // "")"' 2>/dev/null || true)"
+            [[ "$ci" == completed* ]] && break
+            sleep 20
+          done
+          echo "::notice title=CI::$ci"
+          if [[ "$ci" != "completed success" ]]; then
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="[AI-MERGE] Not merged automatically: CI is \`${ci:-not found}\` on $SHA. Fix CI (or comment \`@droid\`), then the next approval will merge it." > /dev/null
+            exit 0
+          fi
+          # "sha" makes the merge fail if someone pushed after the review.
+          if out="$(gh api -X PUT "repos/$REPO/pulls/$PR_NUMBER/merge" -f merge_method=merge -f sha="$SHA" 2>&1)"; then
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="[AI-MERGE] Merged into \`$BASE_REF\` (Claude approved, CI green). QA starts automatically." > /dev/null
+            echo "::notice title=Merged::PR #$PR_NUMBER into $BASE_REF"
+          else
+            gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="[AI-MERGE] Could not merge automatically: $(head -c 300 <<<"$out"). Please merge manually." > /dev/null
           fi
 
       - name: Report failure on the PR

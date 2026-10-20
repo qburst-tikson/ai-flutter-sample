@@ -32,7 +32,7 @@ jobs:
       # A PAT (or GitHub App token) makes the PR trigger your normal CI.
       # With the default GITHUB_TOKEN, PRs it opens do NOT trigger other workflows.
       GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
-      BASE_BRANCH: ${{ vars.AI_BASE_BRANCH || 'main' }}
+      BASE_BRANCH: ${{ vars.AI_BASE_BRANCH || 'develop' }}
     steps:
       - name: Validate issue key
         run: |
@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ vars.AI_BASE_BRANCH || 'main' }}
+          ref: ${{ vars.AI_BASE_BRANCH || 'develop' }}
           fetch-depth: 0
           token: ${{ secrets.GH_PAT || github.token }}
 
@@ -168,7 +168,7 @@ jobs:
             echo "---"
             echo "Jira: ${JIRA_BASE_URL%/}/browse/$ISSUE_KEY"
             echo
-            echo "_Review tip: submit **Request changes**, or comment with \`@droid\` + what to change, and the AI will push fixes to this PR._"
+            echo "_Review tip: submit **Request changes**, or comment with \`@droid\` + what to change, and the AI will push fixes to this PR. When Claude approves and CI is green, the PR is merged into \`develop\` automatically and QA starts._"
             if [[ "${{ steps.verify.outcome }}" != "success" ]]; then
               echo
               echo "⚠️ **Automated checks failed** — opened as draft. See the workflow run:"
