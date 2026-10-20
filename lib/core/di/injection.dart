@@ -12,6 +12,7 @@ import '../../features/home/domain/repositories/greeting_repository.dart';
 import '../../features/home/domain/usecases/get_greeting.dart';
 import '../../features/home/presentation/cubit/home_cubit.dart';
 import '../../features/main_shell/presentation/cubit/main_shell_cubit.dart';
+import '../../features/settings/presentation/cubit/settings_cubit.dart';
 
 /// Global service locator.
 final GetIt sl = GetIt.instance;
@@ -33,6 +34,9 @@ Future<void> configureDependencies() async {
 
   // ── MainShell ─────────────────────────────────────────
   sl.registerFactory(() => MainShellCubit());
+
+  // ── Settings ──────────────────────────────────────────
+  sl.registerFactory(() => SettingsCubit(sl()));
 
   // ── Auth ──────────────────────────────────────────────
   sl
