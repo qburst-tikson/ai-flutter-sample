@@ -168,7 +168,7 @@ jobs:
             echo "---"
             echo "Jira: ${JIRA_BASE_URL%/}/browse/$ISSUE_KEY"
             echo
-            echo "_Review tip: submit **Request changes**, or comment with \`@droid\` + what to change, and the AI will push fixes to this PR. When Claude approves and CI is green, the PR is merged into \`develop\` automatically and QA starts._"
+            echo "_Review tip: submit **Request changes**, or comment with \`@droid\` + what to change, and the AI will push fixes to this PR. After Claude approves and CI is green, review and merge into \`develop\` — that starts QA automatically._"
             if [[ "${{ steps.verify.outcome }}" != "success" ]]; then
               echo
               echo "⚠️ **Automated checks failed** — opened as draft. See the workflow run:"

@@ -41,8 +41,9 @@ jobs:
       MAX_ROUNDS: ${{ vars.AI_REVIEW_MAX_ROUNDS || '3' }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      # PRs into this branch are merged automatically once Claude approves and CI is green.
-      AUTO_MERGE_BASE: ${{ vars.AI_AUTO_MERGE_BASE || 'develop' }}
+      # Optional: set the repo variable AI_AUTO_MERGE_BASE (e.g. "develop") to merge PRs into that
+      # branch automatically once Claude approves and CI is green. Empty (default) = a human merges.
+      AUTO_MERGE_BASE: ${{ vars.AI_AUTO_MERGE_BASE || '' }}
     steps:
       - name: Decide whether to review
         id: gate
@@ -145,10 +146,10 @@ jobs:
             fi
             if [[ "$verdict" == "changes" ]]; then
               echo "_The AI will now fix the blocker/major issues on this branch and push. A new review runs after the push._"
-            elif [[ "$BASE_REF" == "$AUTO_MERGE_BASE" ]]; then
+            elif [[ -n "$AUTO_MERGE_BASE" && "$BASE_REF" == "$AUTO_MERGE_BASE" ]]; then
               echo "_No blocking issues. It will be merged into \`$BASE_REF\` automatically once CI is green, and QA starts._"
             else
-              echo "_No blocking issues. Ready for human review and merge._"
+              echo "_No blocking issues. Ready for human review — merging into \`$BASE_REF\` starts QA._"
             fi
           } > .ai/review_body.md
           # The PR author is the bot account, so GitHub only allows a COMMENT-type review here.
@@ -163,7 +164,7 @@ jobs:
           fi
 
       - name: Auto-merge into develop (Claude approved + CI green)
-        if: steps.gate.outputs.go == 'true' && env.VERDICT == 'approve' && env.BASE_REF == env.AUTO_MERGE_BASE
+        if: steps.gate.outputs.go == 'true' && env.VERDICT == 'approve' && env.AUTO_MERGE_BASE != '' && env.BASE_REF == env.AUTO_MERGE_BASE
         env:
           SHA: ${{ steps.gate.outputs.sha }}
         run: |
