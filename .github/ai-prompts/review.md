@@ -3,7 +3,7 @@ pull request; your job is to catch what it missed. Be strict but fair. Follow CL
 
 Inputs:
 - .ai/pr.md — PR title and description
-- .ai/diff.patch — the full diff of this PR against main
+- .ai/diff.patch — the full diff of this PR against its base branch (usually develop)
 - .ai/ticket.md — the Jira ticket with acceptance criteria (may be empty)
 - .ai/plan.md — the approved plan (may be empty)
 - .ai/previous_reviews.md — your earlier review rounds on this PR and the fixes made since (may be empty)

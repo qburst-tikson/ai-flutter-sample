@@ -203,10 +203,28 @@ into `.ai/design/` and lists them in `.ai/ticket.md`:
 Tips: one clear, phone-sized image per screen with a meaningful file name, and write the main
 colour hex values, custom fonts and tap behaviour in the description.
 
-## Closing tickets and protecting main
+## Branches, QA and releases (develop / main)
 
-- **ai-jira-done.yml**: when a PR is merged, the ticket (key from the branch name or PR title)
-  gets an `[AI-DONE]` comment with the PR link and merge commit, then moves to `Done`
-  (override with the repo variable `JIRA_DONE_STATUS`).
-- **Branch protection on `main`**: changes only through a PR, the `check` CI job must pass,
-  force pushes and deletion are blocked, also for admins. Merged branches are deleted automatically.
+```
+feature/<KEY>-…  --PR-->  develop  --release PR-->  main
+   AI codes          Claude review ✅ + CI ✅            you merge
+                     -> auto-merge into develop          -> tickets Done
+                     -> QA: APK + AI checklist -> Jira "QA"
+```
+
+- **AI PRs target `develop`** (repo variable `AI_BASE_BRANCH`, default `develop`).
+- **ai-claude-review.yml**: when Claude approves a PR into `develop` and the CI `check` job is green,
+  it merges the PR automatically (`AI_AUTO_MERGE_BASE`, default `develop`). PRs into `main` are never auto-merged.
+- **ai-qa.yml** (push to `develop`): builds a debug APK, publishes it as the `develop-latest` pre-release,
+  Claude writes a manual QA checklist per ticket (`.github/ai-prompts/qa.md`), and each ticket gets an
+  `[AI-QA]` comment with the APK link and checklist and moves to `QA` (`JIRA_QA_STATUS`).
+- **Release**: open a PR `develop → main` and merge it. **ai-jira-done.yml** finds every ticket in that PR's
+  commits, comments `[AI-RELEASED]` and moves it to `Done` (`JIRA_DONE_STATUS`).
+- **QA failed**: comment in Jira what is wrong, then either raise a bug ticket with the `ai` label, or move
+  the ticket back to *Ready to work* so the AI re-plans with the tester's comment.
+
+### GitHub settings
+- Default branch: `develop` (Settings → General). Comment- and Jira-triggered workflows run from it.
+- Branch protection `develop`: require PR + status check `check`, 0 approvals (Claude is the reviewer).
+- Branch protection `main`: require PR + status check `check`; only release PRs from `develop`.
+- Settings → General → *Automatically delete head branches*.

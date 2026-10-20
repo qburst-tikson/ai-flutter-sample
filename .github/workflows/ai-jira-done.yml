@@ -1,11 +1,13 @@
-# When a PR is merged, close its Jira ticket: comment with the PR link + merge commit,
-# then move the ticket to "Done" (override with the repo variable JIRA_DONE_STATUS).
-# The Jira key is taken from the branch name (feature/SCRUM-7-...) or the PR title ([SCRUM-7] ...).
-name: Jira Done on Merge
+# Release: when a PR into main (usually develop -> main) is merged, every Jira ticket in it
+# gets an "[AI-RELEASED]" comment and moves to "Done" (override with the repo variable JIRA_DONE_STATUS).
+# Keys come from the PR's commits (merge commits carry the feature branch name), its title and branch.
+# Merges into develop are handled by ai-qa.yml (ticket -> QA), not here.
+name: Jira Done on Release
 
 on:
   pull_request:
     types: [closed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,8 +16,10 @@ jobs:
   done:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+      REPO: ${{ github.repository }}
       JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
       JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
       JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
@@ -25,38 +29,40 @@ jobs:
       PR_URL: ${{ github.event.pull_request.html_url }}
       MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
       MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
-      BASE_REF: ${{ github.event.pull_request.base.ref }}
       DONE_STATUS: ${{ vars.JIRA_DONE_STATUS || 'Done' }}
     steps:
-      - name: Find the Jira key
-        id: key
+      - name: Find the Jira keys in this release
+        id: keys
         run: |
-          key="$(grep -oE '[A-Z][A-Z0-9]+-[0-9]+' <<<"$HEAD_REF" | head -n1 || true)"
-          [[ -n "$key" ]] || key="$(grep -oE '[A-Z][A-Z0-9]+-[0-9]+' <<<"$PR_TITLE" | head -n1 || true)"
-          if [[ -z "$key" ]]; then
-            echo "::notice::No Jira key in branch '$HEAD_REF' or title — nothing to close."
-          else
-            echo "::notice title=Jira::Closing $key for PR #$PR_NUMBER"
-          fi
-          echo "key=$key" >> "$GITHUB_OUTPUT"
+          {
+            echo "$HEAD_REF"
+            echo "$PR_TITLE"
+            gh api "repos/$REPO/pulls/$PR_NUMBER/commits" --paginate --jq '.[].commit.message'
+          } | grep -oE '\b[A-Z][A-Z0-9]+-[0-9]+\b' | sort -u > keys.txt || true
+          echo "::notice title=Release PR #$PR_NUMBER::tickets: $(tr '\n' ' ' < keys.txt)"
+          echo "count=$(wc -l < keys.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
-        if: steps.key.outputs.key != ''
+        if: steps.keys.outputs.count != '0'
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          path: repo
           sparse-checkout: scripts
 
-      - name: Comment and move to Done
-        if: steps.key.outputs.key != ''
-        env:
-          ISSUE_KEY: ${{ steps.key.outputs.key }}
+      - name: Comment and move each ticket to Done
+        if: steps.keys.outputs.count != '0'
         run: |
-          chmod +x scripts/jira.sh
-          mkdir -p .ai
+          chmod +x repo/scripts/jira.sh
           {
-            echo "[AI-DONE] PR #$PR_NUMBER merged into $BASE_REF by $MERGED_BY."
+            echo "[AI-RELEASED] Released to main via PR #$PR_NUMBER (merged by $MERGED_BY)."
             echo "PR: $PR_URL"
-            echo "Merge commit: ${{ github.server_url }}/${{ github.repository }}/commit/$MERGE_SHA"
-          } > .ai/jira-merged.md
-          scripts/jira.sh comment "$ISSUE_KEY" .ai/jira-merged.md
-          scripts/jira.sh transition "$ISSUE_KEY" "$DONE_STATUS"
+            echo "Merge commit: ${{ github.server_url }}/$REPO/commit/$MERGE_SHA"
+          } > released.md
+          while read -r key; do
+            [[ -n "$key" ]] || continue
+            # A key that isn't a real ticket (e.g. "UTF-8") just fails here and is skipped.
+            if repo/scripts/jira.sh comment "$key" released.md; then
+              repo/scripts/jira.sh transition "$key" "$DONE_STATUS" || true
+            else
+              echo "::warning::Skipped $key (not found in Jira?)"
+            fi
+          done < keys.txt
