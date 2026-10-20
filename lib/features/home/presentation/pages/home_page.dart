@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
-import '../../../../core/widgets/logout_button.dart';
+import '../../../auth/presentation/widgets/logout_button.dart';
 import '../cubit/home_cubit.dart';
 
 class HomePage extends StatelessWidget {

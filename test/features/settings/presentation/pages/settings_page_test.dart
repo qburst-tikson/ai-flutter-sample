@@ -1,5 +1,9 @@
 import 'package:ai_flutter_sample/core/di/injection.dart';
 import 'package:ai_flutter_sample/features/auth/data/demo_credentials.dart';
+import 'package:ai_flutter_sample/features/auth/data/repositories/in_memory_session_repository_impl.dart';
+import 'package:ai_flutter_sample/features/auth/domain/repositories/session_repository.dart';
+import 'package:ai_flutter_sample/features/auth/domain/usecases/logout.dart';
+import 'package:ai_flutter_sample/features/auth/presentation/cubit/logout_cubit.dart';
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_flutter_sample/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:ai_flutter_sample/features/settings/presentation/pages/settings_page.dart';
@@ -17,6 +21,14 @@ void main() {
 
   setUp(() {
     cubit = _MockSettingsCubit();
+    // The app bar builds LogoutButton, which resolves LogoutCubit from sl;
+    // these tests never tap it, so the real cubit with the real use case
+    // and a real in-memory session is fine.
+    sl.registerLazySingleton<SessionRepository>(
+      () => InMemorySessionRepositoryImpl(),
+    );
+    sl.registerLazySingleton(() => Logout(sl()));
+    sl.registerFactory(() => LogoutCubit(sl()));
   });
 
   tearDown(() async {
@@ -67,7 +79,9 @@ void main() {
     'logout then login with the demo account shows the email again',
     (tester) async {
       // Real end-to-end flow: real DI, real session, fake auth repository,
-      // no sl mocking.
+      // no sl mocking. Reset first: setUp already registered the logout
+      // dependencies, and configureDependencies registers them again.
+      await sl.reset();
       await configureDependencies();
       await tester.pumpWidget(const MaterialApp(home: LoginPage()));
 
