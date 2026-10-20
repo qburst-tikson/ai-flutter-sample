@@ -5,6 +5,8 @@ import 'package:ai_flutter_sample/features/auth/presentation/cubit/login_cubit.d
 import 'package:ai_flutter_sample/features/auth/presentation/pages/login_page.dart';
 import 'package:ai_flutter_sample/features/home/presentation/cubit/home_cubit.dart';
 import 'package:ai_flutter_sample/features/home/presentation/pages/home_page.dart';
+import 'package:ai_flutter_sample/features/main_shell/presentation/cubit/main_shell_cubit.dart';
+import 'package:ai_flutter_sample/features/main_shell/presentation/pages/main_shell_page.dart';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -190,11 +192,12 @@ void main() {
     verify(() => cubit.clearFieldError(email: true)).called(1);
   });
 
-  testWidgets('navigates to the home page on success', (tester) async {
+  testWidgets('navigates to the main shell on success', (tester) async {
     final homeCubit = _MockHomeCubit();
     when(() => homeCubit.state).thenReturn(const HomeLoading());
     when(() => homeCubit.load()).thenAnswer((_) async {});
     sl.registerFactory<HomeCubit>(() => homeCubit);
+    sl.registerFactory<MainShellCubit>(MainShellCubit.new);
     whenListen(
       cubit,
       Stream<LoginState>.value(const LoginSuccess()),
@@ -205,6 +208,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
+    expect(find.byType(MainShellView), findsOneWidget);
     expect(find.byType(HomeView), findsOneWidget);
     expect(find.byType(LoginView), findsNothing);
   });
