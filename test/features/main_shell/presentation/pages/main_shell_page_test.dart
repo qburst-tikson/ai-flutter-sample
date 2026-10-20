@@ -64,6 +64,8 @@ void main() {
     expect(find.byIcon(Icons.home), findsOneWidget);
     expect(find.byIcon(Icons.search_outlined), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsNothing);
+    expect(find.byIcon(Icons.settings), findsNothing);
   });
 
   testWidgets('shows the Home tab by default', (tester) async {
@@ -84,6 +86,9 @@ void main() {
 
     expect(find.byType(SearchView), findsOneWidget);
     expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.home), findsNothing);
     expect(find.byType(HomeView), findsNothing);
   });
 
@@ -97,6 +102,9 @@ void main() {
 
       expect(find.byType(SettingsView), findsOneWidget);
       expect(find.byIcon(Icons.settings), findsOneWidget);
+      expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.search_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.home), findsNothing);
       expect(find.byType(HomeView), findsNothing);
     },
   );
@@ -110,6 +118,9 @@ void main() {
 
     expect(find.byType(SearchView), findsOneWidget);
     expect(find.byIcon(Icons.search), findsOneWidget);
+    expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.home), findsNothing);
   });
 
   testWidgets('swiping right from Search moves back to Home', (tester) async {
@@ -120,6 +131,9 @@ void main() {
 
     expect(find.byType(HomeView), findsOneWidget);
     expect(find.byIcon(Icons.home), findsOneWidget);
+    expect(find.byIcon(Icons.search_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsNothing);
   });
 
   testWidgets('swiping left twice reaches Settings', (tester) async {
@@ -130,6 +144,9 @@ void main() {
 
     expect(find.byType(SettingsView), findsOneWidget);
     expect(find.byIcon(Icons.settings), findsOneWidget);
+    expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.search_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.home), findsNothing);
   });
 
   testWidgets('swiping right on Home stays clamped on Home', (tester) async {
@@ -139,6 +156,9 @@ void main() {
 
     expect(find.byType(HomeView), findsOneWidget);
     expect(find.byIcon(Icons.home), findsOneWidget);
+    expect(find.byIcon(Icons.search_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsNothing);
   });
 
   testWidgets('swiping left on Settings stays clamped on Settings', (
@@ -152,6 +172,20 @@ void main() {
 
     expect(find.byType(SettingsView), findsOneWidget);
     expect(find.byType(HomeView), findsNothing);
+  });
+
+  testWidgets('shows the logout button on the Search and Settings tabs', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.logout), findsOneWidget);
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.logout), findsOneWidget);
   });
 
   testWidgets('logout from the Home tab returns to Login and clears the stack',
@@ -179,4 +213,32 @@ void main() {
       reason: 'the navigation stack should be cleared after logging out',
     );
   });
+
+  testWidgets(
+    'logout from the Settings tab returns to Login and clears the stack',
+    (tester) async {
+      final loginCubit = _MockLoginCubit();
+      when(() => loginCubit.state).thenReturn(const LoginInitial());
+      sl.registerFactory<LoginCubit>(() => loginCubit);
+
+      await pumpShell(tester);
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.logout));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Logout'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LoginView), findsOneWidget);
+      expect(find.byType(MainShellView), findsNothing);
+      expect(find.byType(SettingsView), findsNothing);
+      final navigator = find.byType(Navigator).first;
+      expect(
+        tester.state<NavigatorState>(navigator).canPop(),
+        isFalse,
+        reason: 'the navigation stack should be cleared after logging out',
+      );
+    },
+  );
 }

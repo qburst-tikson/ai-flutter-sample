@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/widgets/logout_button.dart';
+
 class SearchPage extends StatelessWidget {
   const SearchPage({super.key});
 
@@ -14,7 +16,10 @@ class SearchView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(
+        title: const Text('Search'),
+        actions: [const LogoutButton()],
+      ),
       body: const Center(child: Text('Search')),
     );
   }
