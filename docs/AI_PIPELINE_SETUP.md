@@ -208,13 +208,14 @@ colour hex values, custom fonts and tap behaviour in the description.
 ```
 feature/<KEY>-…  --PR-->  develop  --release PR-->  main
    AI codes          Claude review ✅ + CI ✅            you merge
-                     -> auto-merge into develop          -> tickets Done
+                     -> you review + merge into develop -> tickets Done
                      -> QA: APK + AI checklist -> Jira "QA"
 ```
 
 - **AI PRs target `develop`** (repo variable `AI_BASE_BRANCH`, default `develop`).
-- **ai-claude-review.yml**: when Claude approves a PR into `develop` and the CI `check` job is green,
-  it merges the PR automatically (`AI_AUTO_MERGE_BASE`, default `develop`). PRs into `main` are never auto-merged.
+- **ai-claude-review.yml**: Claude reviews; you review too and merge into `develop` (that starts QA).
+  Optional auto-merge: set the repo variable `AI_AUTO_MERGE_BASE=develop` to merge automatically once Claude
+  approves and CI is green (off by default; `main` is never auto-merged).
 - **ai-qa.yml** (push to `develop`): builds a debug APK, publishes it as the `develop-latest` pre-release,
   Claude writes a manual QA checklist per ticket (`.github/ai-prompts/qa.md`), and each ticket gets an
   `[AI-QA]` comment with the APK link and checklist and moves to `QA` (`JIRA_QA_STATUS`).
@@ -225,6 +226,6 @@ feature/<KEY>-…  --PR-->  develop  --release PR-->  main
 
 ### GitHub settings
 - Default branch: `develop` (Settings → General). Comment- and Jira-triggered workflows run from it.
-- Branch protection `develop`: require PR + status check `check`, 0 approvals (Claude is the reviewer).
+- Branch protection `develop`: require PR + status check `check`, 0 approvals (you merge after your own review).
 - Branch protection `main`: require PR + status check `check`; only release PRs from `develop`.
 - Settings → General → *Automatically delete head branches*.
