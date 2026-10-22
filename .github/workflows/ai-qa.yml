@@ -50,7 +50,9 @@ jobs:
           grep -qxF '.ai/' .git/info/exclude || echo '.ai/' >> .git/info/exclude
           if [[ -n "$INPUT_KEY" ]]; then
             echo "$INPUT_KEY" > .ai/qa/keys.txt
-            range="HEAD~1..HEAD"
+            # Diff of the merge that brought this ticket into develop (fallback: last commit).
+            m="$(git log --merges --grep="$INPUT_KEY" -1 --format=%H || true)"
+            if [[ -n "$m" ]]; then range="$m~1..$m"; else range="HEAD~1..HEAD"; fi
           else
             if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
               range="HEAD~1..HEAD"
@@ -125,19 +127,35 @@ jobs:
           path: ${{ steps.apk.outputs.file }}
           retention-days: 14
 
+      # claude-code-action does not support "push" events, so run the Claude Code CLI directly.
       - name: Claude writes the QA checklists
         id: claude
         if: steps.keys.outputs.count != '0' && env.COUNT != '0'
         continue-on-error: true
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: >-
-            --max-turns 30
-            --allowedTools "Read,Glob,Grep,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*)"
-          prompt: |
-            Read the file .github/ai-prompts/qa.md and follow its instructions exactly.
+        env:
+          OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          [[ -n "$OAUTH" ]] && export CLAUDE_CODE_OAUTH_TOKEN="$OAUTH"
+          [[ -n "$API_KEY" ]] && export ANTHROPIC_API_KEY="$API_KEY"
+          npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
+          set +e
+          claude -p "Read the file .github/ai-prompts/qa.md and follow its instructions exactly." \
+            --max-turns 30 \
+            --allowedTools "Read,Glob,Grep,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(ls:*)" \
+            --output-format json > .ai/qa/claude.json 2> .ai/qa/claude.err
+          rc=$?
+          set -e
+          echo "::notice title=Claude QA::exit=$rc $(jq -r '"turns=\(.num_turns // "?") cost=\(.total_cost_usd // "?")"' .ai/qa/claude.json 2>/dev/null)"
+          missing=""
+          while read -r key; do
+            [[ -n "$key" && ! -s ".ai/qa/$key/checklist.md" ]] && missing="$missing $key"
+          done < .ai/qa/keys.txt
+          if [[ $rc -ne 0 || -n "$missing" ]]; then
+            msg="$( { jq -r '.result // empty' .ai/qa/claude.json 2>/dev/null; tail -c 600 .ai/qa/claude.err; } | tr '\n' ' ' | head -c 900)"
+            echo "::warning title=QA checklist missing for:${missing:- (exit $rc)}::$msg"
+            exit 1
+          fi
 
       - name: Post to Jira and move tickets to QA
         if: steps.keys.outputs.count != '0' && env.COUNT != '0'
